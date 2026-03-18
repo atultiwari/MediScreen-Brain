@@ -7,11 +7,11 @@ from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 from pathlib import Path
-
 from ultralytics import YOLO
-
 from utils.TumorSliceFinder import TumorSliceFinder
 import nibabel as nib
+import openpyxl
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill, Color
 
 
 # 处理打包环境
@@ -5884,8 +5884,11 @@ class EnhancedDetectionUI(QMainWindow):
                 result_save_path = result_dir / f"{file_name}_result.jpg"
                 cv2.imwrite(str(result_save_path), result_img)
 
-            # Save detection report
+            # Save detection report (TXT format)
             self.save_detection_report(result_dir)
+            
+            # Save detection report (Excel format)
+            self.save_detection_report_xlsx(result_dir)
 
             QMessageBox.information(self, "Success", f"Results saved to:\n{result_dir}")
             self.log_message(f"💾 Results saved to: {result_dir}")
@@ -5899,7 +5902,7 @@ class EnhancedDetectionUI(QMainWindow):
         report_path = result_dir / "detection_report.txt"
 
         with open(report_path, 'w', encoding='utf-8') as f:
-            f.write("🎯 YOLO-based Brain Tumor Detection System - Batch Detection Report\n")
+            f.write("🎯 MediScreen-Brain Tumor Detection System - Batch Detection Report\n")
             f.write("=" * 60 + "\n")
             f.write(f"📅 Processing time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"🎚️ Confidence threshold: {self.confidence_threshold}\n")
@@ -5967,6 +5970,141 @@ class EnhancedDetectionUI(QMainWindow):
                             f.write("\n")
 
                 f.write("\n")
+
+    def save_detection_report_xlsx(self, result_dir):
+        """Save detection report as Excel file"""
+        excel_path = result_dir / "detection_report.xlsx"
+        
+        # Create workbook and worksheet
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Detection Results"
+        
+        # Define styles
+        header_font = Font(bold=True, size=12, color="FFFFFF")
+        header_fill = PatternFill(start_color="3498DB", end_color="3498DB", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+        cell_alignment = Alignment(horizontal="left", vertical="center")
+        
+        # Define border
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Set column headers
+        headers = [
+            "Index",
+            "File Name",
+            "Detected Objects",
+            "Inference Time (s)",
+            "Confidence",
+            "Class Distribution",
+            "Max Diameter (pixel)",
+            "Total Area (pixel²)"
+        ]
+        
+        # Write headers
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+        
+        # Adjust column widths
+        column_widths = [8, 35, 12, 15, 20, 30, 18, 18]
+        for i, width in enumerate(column_widths, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+        
+        # Write data rows
+        for row_idx, result in enumerate(self.batch_results, 2):
+            # 序号
+            ws.cell(row=row_idx, column=1, value=row_idx - 1).border = thin_border
+            
+            # 文件名
+            file_name = Path(result['file_path']).name
+            ws.cell(row=row_idx, column=2, value=file_name).border = thin_border
+            
+            # 检测目标数
+            ws.cell(row=row_idx, column=3, value=result['object_count']).border = thin_border
+            
+            # 推理时间
+            ws.cell(row=row_idx, column=4, value=round(result['inference_time'], 3)).border = thin_border
+            
+            # 置信度
+            if result['results'] and result['results'][0].boxes and len(result['results'][0].boxes) > 0:
+                confidences = result['results'][0].boxes.conf.cpu().numpy()
+                classes = result['results'][0].boxes.cls.cpu().numpy().astype(int)
+                
+                if len(confidences) == 1:
+                    confidence_str = f"{confidences[0]:.3f}"
+                else:
+                    confidence_str = f"{np.min(confidences):.3f} - {np.max(confidences):.3f}"
+                
+                ws.cell(row=row_idx, column=5, value=confidence_str).border = thin_border
+                
+                # 类别分布
+                class_counts = {}
+                for cls in classes:
+                    class_name = result['class_names'][cls] if cls < len(result['class_names']) else f"Class{cls}"
+                    class_counts[class_name] = class_counts.get(class_name, 0) + 1
+                
+                class_dist_str = ", ".join([f"{name}:{count}" for name, count in class_counts.items()])
+                ws.cell(row=row_idx, column=6, value=class_dist_str).border = thin_border
+                
+                # 直径和面积信息
+                if 'diameters' in result and 'voxels' in result:
+                    max_diameter = max(result['diameters']) if result['diameters'] else 0
+                    total_voxel = sum(result['voxels']) if result['voxels'] else 0
+                    
+                    ws.cell(row=row_idx, column=7, value=round(max_diameter, 2)).border = thin_border
+                    ws.cell(row=row_idx, column=8, value=round(total_voxel, 2)).border = thin_border
+                else:
+                    ws.cell(row=row_idx, column=7, value="N/A").border = thin_border
+                    ws.cell(row=row_idx, column=8, value="N/A").border = thin_border
+            else:
+                ws.cell(row=row_idx, column=5, value="No detection result").border = thin_border
+                ws.cell(row=row_idx, column=6, value="-").border = thin_border
+                ws.cell(row=row_idx, column=7, value="N/A").border = thin_border
+                ws.cell(row=row_idx, column=8, value="N/A").border = thin_border
+        
+        # Add summary sheet
+        summary_ws = wb.create_sheet(title="Summary")
+        
+        # Summary headers
+        summary_headers = [
+            "Metric",
+            "Value"
+        ]
+        
+        for col, header in enumerate(summary_headers, 1):
+            cell = summary_ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+        
+        summary_ws.column_dimensions['A'].width = 25
+        summary_ws.column_dimensions['B'].width = 20
+        
+        # Write summary data
+        summary_data = [
+            ("Processing Time", datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+            ("Confidence Threshold", self.confidence_threshold),
+            ("Number of Images", len(self.batch_results)),
+            ("Total Detected Objects", sum(r['object_count'] for r in self.batch_results)),
+            ("Average Inference Time (s)", round(sum(r['inference_time'] for r in self.batch_results) / len(self.batch_results), 3) if self.batch_results else 0)
+        ]
+        
+        for row_idx, (label, value) in enumerate(summary_data, 2):
+            summary_ws.cell(row=row_idx, column=1, value=label).border = thin_border
+            summary_ws.cell(row=row_idx, column=2, value=value).border = thin_border
+        
+        # Save workbook
+        wb.save(excel_path)
 
     def clear_display_windows(self):
         """Clear display windows"""
