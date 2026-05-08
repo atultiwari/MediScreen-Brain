@@ -1309,8 +1309,8 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
 
 if __name__ == "__main__":
     model_path = r'H:\pycharm_project\PI-MAPP\project\detection_train\tumor\runs\detect\train_yolo12_try_owndata2\weights\best.pt'
-    nii_dir = r"H:\data\tumor_data_swust\data1_output\filterred1"
-    output_base_dir = r'H:\data\tumor_data_swust\data1_output\filterred1_output'
+    nii_dir = r"H:\data\tumor_data_swust\data1_output\filtered"
+    output_base_dir = r'H:\data\tumor_data_swust\data1_output\filtered_output'
     
     # 批量处理所有文件
     all_results = batch_compare_methods(
