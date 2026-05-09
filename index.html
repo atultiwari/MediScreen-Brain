@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediScreen-Brain - AI Brain Tumor Detection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f6f7f3;
+      --ink: #10212d;
+      --muted: #4f5d68;
+      --accent: #0f5c57;
+      --accent-2: #cc6d2f;
+      --panel: #ffffff;
+      --line: #d9dfdf;
+      --shadow: 0 12px 40px rgba(16, 33, 45, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: "Sora", sans-serif;
+      background: radial-gradient(circle at 10% -20%, #e6f2ef 0%, transparent 40%),
+                  radial-gradient(circle at 90% 120%, #ffe7d8 0%, transparent 40%), var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .bg-orb {
+      position: fixed;
+      border-radius: 999px;
+      filter: blur(70px);
+      opacity: 0.25;
+      z-index: -1;
+    }
+    .orb-a {
+      width: 320px; height: 320px;
+      background: #1f8f87;
+      top: -100px; right: -80px;
+    }
+    .orb-b {
+      width: 260px; height: 260px;
+      background: #e88e53;
+      bottom: -80px; left: -60px;
+    }
+    .topbar {
+      position: sticky; top: 0; z-index: 20;
+      display: grid; grid-template-columns: auto 1fr auto auto;
+      gap: 24px; align-items: center;
+      padding: 14px 28px;
+      backdrop-filter: blur(12px);
+      background: rgba(246, 247, 243, 0.8);
+      border-bottom: 1px solid rgba(15, 92, 87, 0.12);
+    }
+    .lang-switch {
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .lang-switch:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .topbar-actions {
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .topbar-actions .btn { padding: 6px 16px; font-size: 0.88rem; line-height: 1.2; }
+    .brand {
+      text-decoration: none; color: var(--ink);
+      display: inline-flex; align-items: center; gap: 10px; font-weight: 700;
+    }
+    .brand img { width: 32px; height: 32px; object-fit: contain; }
+    nav {
+      display: flex; justify-content: center; gap: 18px; flex-wrap: wrap;
+    }
+    nav a { color: var(--muted); text-decoration: none; font-size: 0.92rem; }
+    nav a:hover { color: var(--accent); }
+    main { width: min(1120px, 92vw); margin: 32px auto 80px; }
+    .hero { text-align: center; padding: 42px 18px 24px; }
+    .eyebrow {
+      text-transform: uppercase; letter-spacing: 0.14em;
+      font-size: 0.74rem; color: var(--accent); font-weight: 700;
+    }
+    h1, h2, h3 { margin: 0; line-height: 1.2; }
+    h1 {
+      margin-top: 14px; font-family: "Source Serif 4", serif;
+      font-size: clamp(2rem, 4.8vw, 4rem); font-weight: 600;
+    }
+    .lead {
+      max-width: 840px; margin: 18px auto 0;
+      color: var(--muted); font-size: 1.05rem;
+    }
+    .actions {
+      margin-top: 26px; display: flex;
+      justify-content: center; gap: 12px; flex-wrap: wrap;
+    }
+    .btn {
+      background: var(--accent); color: #fff; text-decoration: none;
+      border: 1px solid var(--accent); border-radius: 999px;
+      padding: 10px 18px; font-weight: 600; font-size: 0.92rem;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .btn:hover {
+      transform: translateY(-1px); box-shadow: 0 10px 20px rgba(15, 92, 87, 0.2);
+    }
+    .btn.ghost { background: transparent; color: var(--accent); }
+    .panel {
+      margin-top: 58px; background: var(--panel);
+      border: 1px solid var(--line); border-radius: 22px;
+      padding: 30px; box-shadow: var(--shadow);
+    }
+    .panel h2 {
+      font-family: "Source Serif 4", serif;
+      font-size: clamp(1.7rem, 3.2vw, 2.6rem); margin-bottom: 18px;
+    }
+    .cards {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;
+    }
+    .cards article {
+      border: 1px solid var(--line); border-radius: 14px;
+      padding: 16px; background: linear-gradient(145deg, #ffffff, #f9fbfa);
+    }
+    .cards h3 { font-size: 1.1rem; margin-bottom: 8px; }
+    .cards p { color: var(--muted); margin: 0; }
+    [lang=zh] { display: none; }
+    [lang=en] { display: block; }
+    footer {
+      width: min(1120px, 92vw); margin: 0 auto 34px;
+      border-top: 1px solid var(--line); padding-top: 20px;
+      display: flex; justify-content: space-between; gap: 10px;
+      color: var(--muted); font-size: 0.9rem;
+    }
+    footer a { color: var(--accent); }
+    @media (max-width: 960px) {
+      .topbar { grid-template-columns: auto 1fr auto auto; gap: 12px 18px; padding: 12px 20px; }
+      nav { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; gap: 14px; }
+      .cards { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .topbar { gap: 10px 12px; padding: 10px 16px; }
+      .topbar-actions { gap: 8px; }
+      .topbar-actions .btn { padding: 5px 12px; font-size: 0.82rem; }
+      nav { gap: 10px; }
+      nav a { font-size: 0.84rem; }
+      main { margin-top: 18px; }
+      footer { flex-direction: column; align-items: flex-start; }
+    }
+    @media (max-width: 480px) {
+      .topbar { grid-template-columns: 1fr; }
+      .brand, .topbar-actions, nav, .lang-switch { justify-self: start; }
+      .lang-switch { grid-row: 2; }
+      .topbar-actions { grid-row: 3; }
+      nav { grid-row: 4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+
+  <div class="topbar">
+    <a href="#" class="brand">MediScreen-Brain</a>
+    <nav>
+      <a href="#features" lang="zh">核心功能</a>
+      <a href="#features" lang="en">Features</a>
+      <a href="#tech" lang="zh">技术架构</a>
+      <a href="#tech" lang="en">Tech</a>
+      <a href="#get" lang="zh">快速开始</a>
+      <a href="#get" lang="en">Get Started</a>
+    </nav>
+    <button class="lang-switch" id="langBtn">中文 / EN</button>
+    <div class="topbar-actions">
+      <a href="#get" class="btn ghost" lang="zh">快速开始</a>
+      <a href="#get" class="btn ghost" lang="en">Get Started</a>
+      <a href="https://github.com/JingW-ui/MediScreen-Brain" class="btn">GitHub</a>
+    </div>
+  </div>
+
+  <main>
+    <section class="hero">
+      <div class="eyebrow" lang="zh">医疗 AI 辅助系统</div>
+      <div class="eyebrow" lang="en">Medical AI Assistant</div>
+      <h1 lang="zh">脑肿瘤智能检测系统</h1>
+      <h1 lang="en">AI Brain Tumor Detection System</h1>
+      <p class="lead" lang="zh">
+        基于 YOLO 深度学习，支持 NIfTI/DICOM 医学影像实时分析、批量检测与标准化报告输出，为医疗影像研究提供高效辅助工具。
+      </p>
+      <p class="lead" lang="en">
+        AI-powered medical imaging system for real-time brain tumor detection, supporting NIfTI/DICOM, batch processing, and professional PDF reports for research & education.
+      </p>
+      <div class="actions">
+        <a href="#get" class="btn" lang="zh">立即使用</a>
+        <a href="#get" class="btn" lang="en">Get Started</a>
+        <a href="#features" class="btn ghost" lang="zh">查看功能</a>
+        <a href="#features" class="btn ghost" lang="en">View Features</a>
+      </div>
+    </section>
+
+    <section id="features" class="panel">
+      <h2 lang="zh">核心功能</h2>
+      <h2 lang="en">Key Features</h2>
+      <div class="cards">
+        <article>
+          <h3 lang="zh">医学影像检测</h3>
+          <h3 lang="en">Medical Imaging</h3>
+          <p lang="zh">支持 NIfTI 三维 MRI 解析，自动生成轴位、矢状位、冠状位三视图，精准定位肿瘤并测量尺寸与体积。</p>
+          <p lang="en">Parse 3D MRI NIfTI files, auto-generate 3 views (axial/sagittal/coronal), locate tumors and measure volume.</p>
+        </article>
+        <article>
+          <h3 lang="zh">实时与批量处理</h3>
+          <h3 lang="en">Real-time & Batch</h3>
+          <p lang="zh">单图/视频/摄像头实时检测，支持文件夹批量分析，自动生成 Excel 与 PDF 诊断报告。</p>
+          <p lang="en">Real-time detection for images/videos/cameras, batch folder analysis, auto Excel & PDF reports.</p>
+        </article>
+        <article>
+          <h3 lang="zh">多摄像头监控</h3>
+          <h3 lang="en">Multi-Camera Monitor</h3>
+          <p lang="zh">最多支持 4 路摄像头实时监测，检测到目标自动录制快照，支持历史回放与导出。</p>
+          <p lang="en">Up to 4 cameras real-time monitor, auto-record snapshots on detection, playback & export supported.</p>
+        </article>
+        <article>
+          <h3 lang="zh">格式转换工具</h3>
+          <h3 lang="en">Format Conversion</h3>
+          <p lang="zh">NIfTI 转 PNG 切片序列，支持多方向导出与预览，便于可视化与二次处理。</p>
+          <p lang="en">Convert NIfTI to PNG slices, multi-direction export & preview for visualization and processing.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="tech" class="panel">
+      <h2 lang="zh">技术架构</h2>
+      <h2 lang="en">Tech Stack</h2>
+      <div class="cards">
+        <article>
+          <h3 lang="zh">核心框架</h3>
+          <h3 lang="en">Core Framework</h3>
+          <p lang="zh">Python 3.8+、Ultralytics YOLOv8、PySide6 界面、OpenCV 图像处理。</p>
+          <p lang="en">Python 3.8+, Ultralytics YOLOv8, PySide6 GUI, OpenCV image processing.</p>
+        </article>
+        <article>
+          <h3 lang="zh">医学影像</h3>
+          <h3 lang="en">Medical Imaging</h3>
+          <p lang="zh">NiBabel 读取 NIfTI，支持 .nii/.nii.gz 格式，三维切片智能提取。</p>
+          <p lang="en">NiBabel for NIfTI, support .nii/.nii.gz, intelligent 3D slice extraction.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="get" class="panel">
+      <h2 lang="zh">快速开始</h2>
+      <h2 lang="en">Get Started</h2>
+      <p lang="zh">轻量便携 · 即开即用 · 零配置体验</p>
+      <p lang="en">Lightweight & Portable · Instant Launch · Zero Configuration</p>
+      <div class="actions">
+        <a href="#" class="btn" lang="zh">下载软件</a>
+        <a href="#" class="btn" lang="en">Download Software</a>
+        <a href="https://github.com/JingW-ui/MediScreen-Brain" class="btn ghost" lang="zh">下载源码</a>
+        <a href="https://github.com/JingW-ui/MediScreen-Brain" class="btn ghost" lang="en">Source Code</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div lang="en">© 2026 MediScreen-Brain · For research & education only</div>
+    <div lang="zh">© 2026 MediScreen-Brain · 仅供医学研究与教学使用</div>
+    <div>
+      <a href="https://github.com/JingW-ui/MediScreen-Brain" lang="en">Documentation</a>
+      <a href="https://github.com/JingW-ui/MediScreen-Brain" lang="zh">项目文档</a>
+       · 
+      <a href="https://github.com/JingW-ui/MediScreen-Brain/issues" lang="en">Support</a>
+      <a href="https://github.com/JingW-ui/MediScreen-Brain/issues" lang="zh">技术支持</a>
+    </div>
+  </footer>
+
+  <script>
+    const langBtn = document.getElementById('langBtn');
+    let isZh = false;
+    // Initialize display based on default language (English)
+    document.querySelectorAll('[lang=zh]').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('[lang=en]').forEach(el => el.style.display = 'block');
+    langBtn.addEventListener('click', () => {
+      isZh = !isZh;
+      document.documentElement.lang = isZh ? 'zh-CN' : 'en';
+      document.querySelectorAll('[lang=zh]').forEach(el => el.style.display = isZh ? 'block' : 'none');
+      document.querySelectorAll('[lang=en]').forEach(el => el.style.display = isZh ? 'none' : 'block');
+      langBtn.textContent = isZh ? '中文 / EN' : 'EN / 中文';
+    });
+  </script>
+</body>
+</html>
