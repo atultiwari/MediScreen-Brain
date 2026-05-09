@@ -21,10 +21,11 @@ class Config:
     AXIAL_SAMPLING_STEP: int = 2
     SAGITTAL_SAMPLING_STEP: int = 2
     CORONAL_SAMPLING_STEP: int = 2
-    SLICE_THRESHOLD: float = 0.05
-    STD_THRESHOLD: float = 5.0
+    SLICE_THRESHOLD: Optional[float] = None  # 如果为None则使用自适应阈值
+    STD_THRESHOLD: Optional[float] = None  # 如果为None则使用自适应阈值
     REFINE_RADIUS: int = 1
     HIGH_CONF_FOR_OTHER_AXES: float = 0.92
+    USE_ADAPTIVE_THRESHOLDS: bool = True  # 是否使用自适应阈值
 
 
 @dataclass
@@ -59,45 +60,56 @@ class FullSearchDetector:
     - 简单直接,但计算量大
     """
 
-    def __init__(self, model_path: str, nii_path: str, output_project: str,
+    def __init__(self, model, nii_path: str, output_project: str,
                  conf: float = 0.65, high_conf_for_other_axes: float = 0.92,
-                 tumor_area_threshold: float = 100.0):
+                 tumor_area_threshold: float = 100.0,
+                 slice_threshold: Optional[float] = None,
+                 std_threshold: Optional[float] = None,
+                 use_adaptive_thresholds: bool = True):
         """
         初始化全轴搜索检测器
 
         Args:
-            model_path: YOLO模型路径
+            model: 已加载的YOLO模型实例
             nii_path: NIfTI文件路径
             output_project: 输出目录
             conf: 轴向搜索置信度阈值
             high_conf_for_other_axes: 矢状面和冠状面搜索置信度阈值
             tumor_area_threshold: 判断是否存在肿瘤的面积阈值
+            slice_threshold: 切片预过滤阈值(非零像素比例)，如果为None且use_adaptive_thresholds=True则自动计算
+            std_threshold: 切片标准差阈值，如果为None且use_adaptive_thresholds=True则自动计算
+            use_adaptive_thresholds: 是否使用自适应阈值（推荐True）
         """
-        self.model_path = model_path
+        self.model = model
         self.nii_path = nii_path
         self.output_project = output_project
         self.conf = conf
         self.high_conf_for_other_axes = high_conf_for_other_axes
         self.tumor_area_threshold = tumor_area_threshold
+        self.use_adaptive_thresholds = use_adaptive_thresholds
 
-        self.model = None
         self.data = None
         self.I, self.J, self.K = 0, 0, 0
         self.spacing = None
+        self.adaptive_thresholds = None
 
-        self._initialize_model()
         self._load_data()
+        
+        # 初始化自适应阈值
+        if self.use_adaptive_thresholds:
+            self.adaptive_thresholds = AdaptiveThresholds(self.data)
+            self.slice_threshold = slice_threshold if slice_threshold is not None else self.adaptive_thresholds.slice_nonzero_thresh()
+            self.std_threshold = std_threshold if std_threshold is not None else self.adaptive_thresholds.slice_std_thresh()
+            print(f"📊 自适应阈值: slice_threshold={self.slice_threshold:.4f}, std_threshold={self.std_threshold:.4f}")
+        else:
+            # 使用固定阈值
+            self.slice_threshold = slice_threshold if slice_threshold is not None else 0.05
+            self.std_threshold = std_threshold if std_threshold is not None else 5.0
+            print(f"📊 固定阈值: slice_threshold={self.slice_threshold}, std_threshold={self.std_threshold}")
 
         os.makedirs(self.output_project, exist_ok=True)
 
-    def _initialize_model(self):
-        """初始化YOLO模型"""
-        print("🔄 Loading model...")
-        try:
-            self.model = YOLO(self.model_path)
-            print("✅ Model loaded successfully")
-        except Exception as e:
-            raise RuntimeError(f"Failed to load model: {e}")
+
 
     def _load_data(self):
         """加载NIfTI数据"""
@@ -339,6 +351,46 @@ class FullSearchDetector:
         return result
 
 
+class AdaptiveThresholds:
+    """自适应阈值计算器 - 根据3D数据动态计算最优阈值"""
+    
+    def __init__(self, data_3d):
+        """
+        初始化自适应阈值计算器
+        
+        Args:
+            data_3d: 3D图像数据 (numpy array)
+        """
+        flat = data_3d.flatten()
+        self.global_mean = flat.mean()
+        self.global_std = flat.std()
+        self.global_nz_ratio = np.count_nonzero(flat) / flat.size
+    
+    def slice_nonzero_thresh(self, quantile=0.1):
+        """
+        计算切片非零比例阈值
+        
+        Args:
+            quantile: 分位数因子，默认0.1
+            
+        Returns:
+            自适应的非零比例阈值
+        """
+        return self.global_nz_ratio * quantile
+    
+    def slice_std_thresh(self, factor=0.5):
+        """
+        计算切片标准差阈值
+        
+        Args:
+            factor: 标准差因子，默认0.5
+            
+        Returns:
+            自适应的标准差阈值
+        """
+        return self.global_std * factor
+
+
 class TumorSliceFinder:
     """
     方法2: 智能分层搜索检测器
@@ -350,20 +402,21 @@ class TumorSliceFinder:
     - 计算效率高,适合快速定位
     """
 
-    def __init__(self, model_path: str, nii_path: str, output_project: str,
+    def __init__(self, model, nii_path: str, output_project: str,
                  conf: float = 0.65, voxel_spacing: Optional[Tuple[float, float, float]] = None,
                  axial_sampling_step: int = 2,
                  sagittal_sampling_step: int = 2,
                  coronal_sampling_step: int = 2,
-                 slice_threshold: float = 0.05,
-                 std_threshold: float = 5.0,
+                 slice_threshold: Optional[float] = None,
+                 std_threshold: Optional[float] = None,
                  refine_radius: int = 1,
-                 other_axes_conf: float = 0.92):
+                 other_axes_conf: float = 0.92,
+                 use_adaptive_thresholds: bool = True):
         """
         初始化肿瘤切片查找器
 
         Args:
-            model_path: YOLO模型路径
+            model: 已加载的YOLO模型实例
             nii_path: NIfTI文件路径
             output_project: 输出目录
             conf: 置信度阈值
@@ -371,42 +424,49 @@ class TumorSliceFinder:
             axial_sampling_step: 轴向采样步长
             sagittal_sampling_step: 矢状面采样步长
             coronal_sampling_step: 冠状面采样步长
-            slice_threshold: 切片预过滤阈值(非零像素比例)
-            std_threshold: 切片标准差阈值
+            slice_threshold: 切片预过滤阈值(非零像素比例)，如果为None且use_adaptive_thresholds=True则自动计算
+            std_threshold: 切片标准差阈值，如果为None且use_adaptive_thresholds=True则自动计算
             refine_radius: 精细搜索半径
             other_axes_conf: 其他轴的置信度阈值
+            use_adaptive_thresholds: 是否使用自适应阈值（推荐True）
         """
-        self.model_path = model_path
+        self.model = model
         self.nii_path = nii_path
         self.output_project = output_project
         self.conf = conf
         self.voxel_spacing = voxel_spacing
+        self.use_adaptive_thresholds = use_adaptive_thresholds
 
         self.AXIAL_SAMPLING_STEP = axial_sampling_step
         self.SAGITTAL_SAMPLING_STEP = sagittal_sampling_step
         self.CORONAL_SAMPLING_STEP = coronal_sampling_step
-        self.SLICE_THRESHOLD = slice_threshold
-        self.STD_THRESHOLD = std_threshold
         self.REFINE_RADIUS = refine_radius
         self.OTHER_AXES_CONF = other_axes_conf
 
-        self.model = None
         self.data = None
         self.I, self.J, self.K = 0, 0, 0
         self.spacing = None
+        self.adaptive_thresholds = None
 
-        self._initialize_model()
         self._load_data()
+        
+        # 初始化自适应阈值
+        if self.use_adaptive_thresholds:
+            self.adaptive_thresholds = AdaptiveThresholds(self.data)
+            self.SLICE_THRESHOLD = slice_threshold if slice_threshold is not None else self.adaptive_thresholds.slice_nonzero_thresh()
+            self.STD_THRESHOLD = std_threshold if std_threshold is not None else self.adaptive_thresholds.slice_std_thresh()
+            print(f"📊 自适应阈值: SLICE_THRESHOLD={self.SLICE_THRESHOLD:.4f}, STD_THRESHOLD={self.STD_THRESHOLD:.4f}")
+        else:
+            # 使用固定阈值
+            self.SLICE_THRESHOLD = slice_threshold if slice_threshold is not None else 0.05
+            self.STD_THRESHOLD = std_threshold if std_threshold is not None else 5.0
+            print(f"📊 固定阈值: SLICE_THRESHOLD={self.SLICE_THRESHOLD}, STD_THRESHOLD={self.STD_THRESHOLD}")
 
         os.makedirs(self.output_project, exist_ok=True)
 
         print(f"📏 Voxel spacing (mm): {self.spacing}")
 
-    def _initialize_model(self):
-        """初始化YOLO模型"""
-        print("🔄 Loading model...")
-        self.model = YOLO(self.model_path)
-        print("✅ Model loaded successfully")
+
 
     def _load_data(self):
         """加载NIfTI数据"""
@@ -993,15 +1053,39 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
     return json_path, txt_path
 
 
-def compare_methods(model_path: str, nii_path: str, output_project: str, conf: float = 0.65):
+def load_yolo_model(model_path: str) -> YOLO:
+    """
+    加载YOLO模型（只加载一次，可复用）
+    
+    Args:
+        model_path: YOLO模型路径
+        
+    Returns:
+        加载好的YOLO模型实例
+    """
+    print("🔄 正在加载YOLO模型...")
+    try:
+        model = YOLO(model_path)
+        print("✅ 模型加载成功")
+        return model
+    except Exception as e:
+        raise RuntimeError(f"模型加载失败: {e}")
+
+
+def compare_methods(model, nii_path: str, output_project: str, conf: float = 0.65,
+                   slice_threshold: Optional[float] = None, std_threshold: Optional[float] = None,
+                   use_adaptive_thresholds: bool = True):
     """
     比较两种方法的性能和结果
     
     Args:
-        model_path: 模型路径
+        model: 已加载的YOLO模型实例
         nii_path: NIfTI文件路径
         output_project: 输出目录
         conf: 置信度阈值
+        slice_threshold: 切片预过滤阈值(非零像素比例)，如果为None且use_adaptive_thresholds=True则自动计算
+        std_threshold: 切片标准差阈值，如果为None且use_adaptive_thresholds=True则自动计算
+        use_adaptive_thresholds: 是否使用自适应阈值（推荐True）
     
     Returns:
         包含两种方法结果的字典
@@ -1018,10 +1102,13 @@ def compare_methods(model_path: str, nii_path: str, output_project: str, conf: f
     print("=" * 70)
     try:
         detector1 = FullSearchDetector(
-            model_path=model_path,
+            model=model,
             nii_path=nii_path,
             output_project=os.path.join(output_project, "full_search"),
-            conf=conf
+            conf=conf,
+            slice_threshold=slice_threshold,
+            std_threshold=std_threshold,
+            use_adaptive_thresholds=use_adaptive_thresholds
         )
         result1 = detector1.search()
         results['full_search'] = result1
@@ -1044,10 +1131,13 @@ def compare_methods(model_path: str, nii_path: str, output_project: str, conf: f
     print("=" * 70)
     try:
         detector2 = TumorSliceFinder(
-            model_path=model_path,
+            model=model,
             nii_path=nii_path,
             output_project=os.path.join(output_project, "hierarchical_search"),
-            conf=conf
+            conf=conf,
+            slice_threshold=slice_threshold,
+            std_threshold=std_threshold,
+            use_adaptive_thresholds=use_adaptive_thresholds
         )
         result2 = detector2.search()
         results['hierarchical_search'] = result2
@@ -1095,7 +1185,9 @@ def compare_methods(model_path: str, nii_path: str, output_project: str, conf: f
     return results
 
 
-def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, conf: float = 0.65):
+def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, conf: float = 0.65,
+                         slice_threshold: Optional[float] = None, std_threshold: Optional[float] = None,
+                         use_adaptive_thresholds: bool = True):
     """
     批量比较两种方法
     
@@ -1104,10 +1196,16 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
         nii_dir: 包含nii.gz文件的目录
         output_base_dir: 输出根目录
         conf: 置信度阈值
+        slice_threshold: 切片预过滤阈值(非零像素比例)，如果为None且use_adaptive_thresholds=True则自动计算
+        std_threshold: 切片标准差阈值，如果为None且use_adaptive_thresholds=True则自动计算
+        use_adaptive_thresholds: 是否使用自适应阈值（推荐True）
     
     Returns:
         所有文件的对比结果列表
     """
+    # 一次性加载模型
+    model = load_yolo_model(model_path)
+    
     # 获取所有nii.gz文件
     nii_files = [f for f in os.listdir(nii_dir) if f.endswith('.nii.gz')]
     
@@ -1132,10 +1230,13 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
         
         try:
             results = compare_methods(
-                model_path=model_path,
+                model=model,
                 nii_path=nii_path,
                 output_project=output_project,
-                conf=conf
+                conf=conf,
+                slice_threshold=slice_threshold,
+                std_threshold=std_threshold,
+                use_adaptive_thresholds=use_adaptive_thresholds
             )
             
             # 收集统计信息
@@ -1310,7 +1411,7 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
 if __name__ == "__main__":
     model_path = r'H:\pycharm_project\PI-MAPP\project\detection_train\tumor\runs\detect\train_yolo12_try_owndata2\weights\best.pt'
     nii_dir = r"H:\data\tumor_data_swust\data1_output\filtered"
-    output_base_dir = r'H:\data\tumor_data_swust\data1_output\filtered_output'
+    output_base_dir = r'H:\data\tumor_data_swust\data1_output\filtered_output4'
     
     # 批量处理所有文件
     all_results = batch_compare_methods(
