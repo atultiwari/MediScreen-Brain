@@ -1219,9 +1219,14 @@ in diagnosis or classification of any medical problems or other medical purposes
 - **GUI 框架**：PySide6
 - **检测模型**：YOLO (Ultralytics)
 
+### 团队与个人
+
+- **研发团队**：[电子科技大学神经工程实验室](https://www.neuro.uestc.edu.cn/)
+- **开发者主页**：[JingW-ui](https://jingw-ui.github.io/resume/)
+
 ---
 
-**最后更新**：2024-01-15  
+**最后更新**：2026-05-13  
 **文档版本**：v2.0  
 **适用软件版本**：MediScreen-Brain v2.0+
 
