@@ -123,7 +123,7 @@ def main():
                 print(f"{model_name:<50} {r['map50']:<10.4f} {r['map']:<10.4f} {r['time']:<10.2f}")
 
     # 保存结果到文件
-    output_file = "validation_results.txt"
+    output_file = "validation_results_i7_14700K.txt"
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write("模型验证结果汇总\n")
         f.write("=" * 80 + "\n\n")

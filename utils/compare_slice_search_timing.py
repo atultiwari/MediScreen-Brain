@@ -4,6 +4,7 @@ import numpy as np
 from ultralytics import YOLO
 import os
 import time
+import argparse
 from dataclasses import dataclass
 from typing import Tuple, Optional, List
 
@@ -14,8 +15,8 @@ from typing import Tuple, Optional, List
 @dataclass
 class Config:
     model_path: str = r'H:\pycharm_project\PI-MAPP\project\detection_train\tumor\runs\detect\train_yolo12_try_owndata2\weights\best.pt'
-    nii_path: str = r'H:\data\QSM\SCA3_Data_raw\anat_niigz\SCA3_0001\SCA3_0001.nii.gz'
-    output_project: str = '../best_slices_results_test/SCA3_0001'
+    nii_path: str = r'../data_test/545140_swust.nii.gz'
+    output_project: str = '../best_slices_results_test/545140_swust'
     conf: float = 0.65
 
     # 优化参数配置
@@ -26,6 +27,21 @@ class Config:
     STD_THRESHOLD: float = 5.0
     REFINE_RADIUS: int = 1
     HIGH_CONF_FOR_OTHER_AXES: float = 0.92
+
+
+def parse_arguments():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(description='MRI Best Slice Detection Comparison')
+    parser.add_argument('--model_path', type=str, 
+                        default=r'H:\pycharm_project\PI-MAPP\project\detection_train\tumor\runs\detect\train_yolo12_try_owndata2\weights\best.pt',
+                        help='Path to the YOLO model file (.pt or .onnx)')
+    parser.add_argument('--nii_path', type=str, 
+                        default=r'../data_test/545140_swust.nii.gz',
+                        help='Path to the NIfTI file')
+    parser.add_argument('--output_project', type=str, 
+                        default='../best_slices_results_test/545140_swust',
+                        help='Output directory path')
+    return parser.parse_args()
 
 
 @dataclass
@@ -426,6 +442,19 @@ Note:
 # ==========================================
 def main():
     try:
+        # 解析命令行参数
+        args = parse_arguments()
+        
+        # 使用命令行参数更新配置
+        config.model_path = args.model_path
+        config.nii_path = args.nii_path
+        config.output_project = args.output_project
+        
+        print(f"📋 Configuration:")
+        print(f"   Model: {config.model_path}")
+        print(f"   NIfTI: {config.nii_path}")
+        print(f"   Output: {config.output_project}")
+        
         # 初始化系统
         initialize_system()
 

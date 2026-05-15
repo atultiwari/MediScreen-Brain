@@ -1,6 +1,7 @@
 import cv2
 import nibabel as nib
 import numpy as np
+from scipy import ndimage
 from ultralytics import YOLO
 import os
 import time
@@ -94,7 +95,7 @@ class FullSearchDetector:
         self.adaptive_thresholds = None
 
         self._load_data()
-        
+
         # 初始化自适应阈值
         if self.use_adaptive_thresholds:
             self.adaptive_thresholds = AdaptiveThresholds(self.data)
@@ -108,8 +109,6 @@ class FullSearchDetector:
             print(f"📊 固定阈值: slice_threshold={self.slice_threshold}, std_threshold={self.std_threshold}")
 
         os.makedirs(self.output_project, exist_ok=True)
-
-
 
     def _load_data(self):
         """加载NIfTI数据"""
@@ -176,118 +175,118 @@ class FullSearchDetector:
             return self.data[:, index, :]
         else:
             raise ValueError(f"Invalid axis: {axis}")
-    
+
     def save_best_slice(self, result: SearchResult, output_dir: str):
         """
         保存最佳切片图像（仅保存，不绘制检测框）
-        
+
         Args:
             result: 搜索结果
             output_dir: 输出目录
-            
+
         Returns:
             保存的文件路径列表
         """
         if not result.has_tumor or result.best_axis is None or result.best_slice_idx is None:
             print("⚠️  未检测到肿瘤，跳过保存切片")
             return []
-        
+
         os.makedirs(output_dir, exist_ok=True)
         saved_files = []
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         # 提取并保存最佳切片所在的轴
         slice_2d = self.extract_slice(result.best_axis, result.best_slice_idx)
         slice_rgb = np.ascontiguousarray(np.stack([slice_2d] * 3, axis=-1))
-        
+
         filename = f"best_slice_{result.best_axis}_{result.best_slice_idx}_{timestamp}.png"
         filepath = os.path.join(output_dir, filename)
         cv2.imwrite(filepath, slice_rgb)
         saved_files.append(filepath)
         print(f"💾 已保存最佳切片 ({result.best_axis}): {filepath}")
-        
+
         return saved_files
-    
+
     def save_all_axis_slices(self, result: SearchResult, output_dir: str):
         """
         保存所有三个轴的最佳切片
-        
+
         Args:
             result: 搜索结果
             output_dir: 输出目录
-            
+
         Returns:
             保存的文件路径字典
         """
         if not result.has_tumor:
             print("⚠️  未检测到肿瘤，跳过保存切片")
             return {}
-        
+
         os.makedirs(output_dir, exist_ok=True)
         saved_files = {}
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         # 保存轴向切片 (axial: k轴)
         if result.best_axis == 'axial' and result.best_slice_idx is not None:
             k_idx = result.best_slice_idx
         else:
             # 如果没有轴向信息，使用中间切片
             k_idx = self.K // 2
-        
+
         slice_2d = self.data[:, :, k_idx]
         slice_rgb = np.ascontiguousarray(np.stack([slice_2d] * 3, axis=-1))
         filepath = os.path.join(output_dir, f"axial_slice_{k_idx}_{timestamp}.png")
         cv2.imwrite(filepath, slice_rgb)
         saved_files['axial'] = filepath
-        
+
         # 保存矢状面切片 (sagittal: i轴)
         if result.best_axis == 'sagittal' and result.best_slice_idx is not None:
             i_idx = result.best_slice_idx
         else:
             i_idx = self.I // 2
-        
+
         slice_2d = self.data[i_idx, :, :]
         slice_rgb = np.ascontiguousarray(np.stack([slice_2d] * 3, axis=-1))
         filepath = os.path.join(output_dir, f"sagittal_slice_{i_idx}_{timestamp}.png")
         cv2.imwrite(filepath, slice_rgb)
         saved_files['sagittal'] = filepath
-        
+
         # 保存冠状面切片 (coronal: j轴)
         if result.best_axis == 'coronal' and result.best_slice_idx is not None:
             j_idx = result.best_slice_idx
         else:
             j_idx = self.J // 2
-        
+
         slice_2d = self.data[:, j_idx, :]
         slice_rgb = np.ascontiguousarray(np.stack([slice_2d] * 3, axis=-1))
         filepath = os.path.join(output_dir, f"coronal_slice_{j_idx}_{timestamp}.png")
         cv2.imwrite(filepath, slice_rgb)
         saved_files['coronal'] = filepath
-        
+
         print(f"💾 已保存 {len(saved_files)} 个切片到: {output_dir}")
         for axis, path in saved_files.items():
             print(f"   - {axis}: {path}")
-        
+
         return saved_files
 
     def search(self) -> SearchResult:
         """
         执行全轴暴力搜索
-            
+
         Returns:
             SearchResult: 包含搜索结果的データ类
         """
         start_time = time.time()
         total_processed = 0
         all_areas = []
-            
+
         best_area = -1
         best_slice_info = None
-            
+
         print("💥 Starting full axial search...")
         for k in range(self.K):
             area, _ = self.run_inference_on_slice(
-                self.extract_slice('axial', k), 
+                self.extract_slice('axial', k),
                 self.conf
             )
             total_processed += 1
@@ -295,11 +294,11 @@ class FullSearchDetector:
             if area > best_area:
                 best_area = area
                 best_slice_info = ('axial', k)
-            
+
         print("💥 Starting full sagittal search...")
         for i in range(self.I):
             area, _ = self.run_inference_on_slice(
-                self.extract_slice('sagittal', i), 
+                self.extract_slice('sagittal', i),
                 self.high_conf_for_other_axes
             )
             total_processed += 1
@@ -307,11 +306,11 @@ class FullSearchDetector:
             if area > best_area:
                 best_area = area
                 best_slice_info = ('sagittal', i)
-            
+
         print("💥 Starting full coronal search...")
         for j in range(self.J):
             area, _ = self.run_inference_on_slice(
-                self.extract_slice('coronal', j), 
+                self.extract_slice('coronal', j),
                 self.high_conf_for_other_axes
             )
             total_processed += 1
@@ -319,17 +318,17 @@ class FullSearchDetector:
             if area > best_area:
                 best_area = area
                 best_slice_info = ('coronal', j)
-            
+
         processing_time = time.time() - start_time
-            
+
         has_tumor = best_area > self.tumor_area_threshold
-            
+
         statistics = {
             'all_areas': all_areas,
             'max_area_found': best_area,
             'area_threshold': self.tumor_area_threshold
         }
-            
+
         result = SearchResult(
             success=True,
             has_tumor=has_tumor,
@@ -342,22 +341,22 @@ class FullSearchDetector:
             message="Full search completed" + (" - No tumor detected" if not has_tumor else ""),
             statistics=statistics
         )
-            
+
         # 保存所有三个轴的切片
         if has_tumor:
             saved_files = self.save_all_axis_slices(result, self.output_project)
             result.message += f" | Slices saved: {list(saved_files.keys())}"
-        
+
         return result
 
 
 class AdaptiveThresholds:
     """自适应阈值计算器 - 根据3D数据动态计算最优阈值"""
-    
+
     def __init__(self, data_3d):
         """
         初始化自适应阈值计算器
-        
+
         Args:
             data_3d: 3D图像数据 (numpy array)
         """
@@ -365,26 +364,26 @@ class AdaptiveThresholds:
         self.global_mean = flat.mean()
         self.global_std = flat.std()
         self.global_nz_ratio = np.count_nonzero(flat) / flat.size
-    
+
     def slice_nonzero_thresh(self, quantile=0.1):
         """
         计算切片非零比例阈值
-        
+
         Args:
             quantile: 分位数因子，默认0.1
-            
+
         Returns:
             自适应的非零比例阈值
         """
         return self.global_nz_ratio * quantile
-    
+
     def slice_std_thresh(self, factor=0.5):
         """
         计算切片标准差阈值
-        
+
         Args:
             factor: 标准差因子，默认0.5
-            
+
         Returns:
             自适应的标准差阈值
         """
@@ -449,7 +448,7 @@ class TumorSliceFinder:
         self.adaptive_thresholds = None
 
         self._load_data()
-        
+
         # 初始化自适应阈值
         if self.use_adaptive_thresholds:
             self.adaptive_thresholds = AdaptiveThresholds(self.data)
@@ -465,8 +464,6 @@ class TumorSliceFinder:
         os.makedirs(self.output_project, exist_ok=True)
 
         print(f"📏 Voxel spacing (mm): {self.spacing}")
-
-
 
     def _load_data(self):
         """加载NIfTI数据"""
@@ -511,26 +508,26 @@ class TumorSliceFinder:
             }
         }
         return units
-    
+
     def save_slices(self, result: SearchResult, output_dir: str) -> Dict[str, str]:
         """
         保存所有最佳切片图像
-        
+
         Args:
             result: 搜索结果
             output_dir: 输出目录
-            
+
         Returns:
             保存的文件路径字典
         """
         if not result.has_tumor:
             print("⚠️  未检测到肿瘤，跳过保存切片")
             return {}
-        
+
         os.makedirs(output_dir, exist_ok=True)
         saved_files = {}
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         # 保存轴向切片
         if result.axial_slice is not None:
             slice_2d = self.data[:, :, result.axial_slice]
@@ -538,7 +535,7 @@ class TumorSliceFinder:
             filepath = os.path.join(output_dir, f"axial_slice_{result.axial_slice}_{timestamp}.png")
             cv2.imwrite(filepath, slice_rgb)
             saved_files['axial'] = filepath
-        
+
         # 保存矢状面切片
         if result.sagittal_slice is not None:
             slice_2d = self.data[result.sagittal_slice, :, :]
@@ -546,7 +543,7 @@ class TumorSliceFinder:
             filepath = os.path.join(output_dir, f"sagittal_slice_{result.sagittal_slice}_{timestamp}.png")
             cv2.imwrite(filepath, slice_rgb)
             saved_files['sagittal'] = filepath
-        
+
         # 保存冠状面切片
         if result.coronal_slice is not None:
             slice_2d = self.data[:, result.coronal_slice, :]
@@ -554,11 +551,11 @@ class TumorSliceFinder:
             filepath = os.path.join(output_dir, f"coronal_slice_{result.coronal_slice}_{timestamp}.png")
             cv2.imwrite(filepath, slice_rgb)
             saved_files['coronal'] = filepath
-        
+
         print(f"💾 已保存 {len(saved_files)} 个切片到: {output_dir}")
         for axis, path in saved_files.items():
             print(f"   - {axis}: {path}")
-        
+
         return saved_files
 
     @staticmethod
@@ -701,31 +698,103 @@ class TumorSliceFinder:
 
         return best_idx_fine, max_area_fine, processed_coarse + len(fine_search_range), skipped_slices
 
-    def search(self) -> SearchResult:
+    def _build_3d_tumor_mask(self, axis_type="axial", top_k=5, conf=None):
         """
-        主搜索函数:查找最佳切片
+        从 axial 多 slice 检测结果构建 3D 肿瘤掩膜
+        返回:
+            mask (I,J,K)
+            axial_processed (int)
+            axial_skipped (int)
+            axial_refine_processed (int)
+        """
+        if conf is None:
+            conf = self.conf
 
-        Returns:
-            SearchResult: 包含搜索结果的データ类
-        """
+        print(f"🧠 Building 3D tumor mask from top-{top_k} axial slices...")
+
+        candidates = []
+        axial_processed = 0
+        axial_skipped = 0
+
+        for k in range(0, self.K, self.AXIAL_SAMPLING_STEP):
+            slice_2d = self.data[:, :, k]
+            if not self.pre_filter_slice(slice_2d, self.SLICE_THRESHOLD, self.STD_THRESHOLD):
+                axial_skipped += 1
+                continue
+
+            axial_processed += 1
+            slice_rgb = np.stack([slice_2d] * 3, axis=-1)
+            results = self.model.predict(
+                source=slice_rgb,
+                conf=conf,
+                verbose=False,
+                save=False
+            )
+
+            max_area = 0
+            best_box = None
+            for r in results:
+                if r.boxes is not None and len(r.boxes) > 0:
+                    boxes = r.boxes.xywh.cpu().numpy()
+                    areas = boxes[:, 2] * boxes[:, 3]
+                    idx = areas.argmax()
+                    if areas[idx] > max_area:
+                        max_area = areas[idx]
+                        best_box = boxes[idx]
+
+            if best_box is not None:
+                candidates.append((k, max_area))
+
+        if len(candidates) == 0:
+            return None, axial_processed, axial_skipped, 0
+
+        candidates = sorted(candidates, key=lambda x: x[1], reverse=True)[:top_k]
+        selected_k = [k for k, _ in candidates]
+        print(f"✅ Selected axial slices: {selected_k}")
+
+        mask = np.zeros_like(self.data, dtype=np.uint8)
+        axial_refine_processed = 0
+
+        for k in selected_k:
+            axial_refine_processed += 1
+            slice_2d = self.data[:, :, k]
+            slice_rgb = np.stack([slice_2d] * 3, axis=-1)
+            results = self.model.predict(
+                source=slice_rgb,
+                conf=conf,
+                verbose=False,
+                save=False
+            )
+
+            for r in results:
+                if r.masks is not None:
+                    m = r.masks.data.cpu().numpy().astype(np.uint8)
+                    if m.ndim == 3:
+                        m = m[0]
+                    mask[:, :, k] = np.logical_or(mask[:, :, k], m > 0)
+                elif r.boxes is not None and len(r.boxes) > 0:
+                    boxes = r.boxes.xyxy.cpu().numpy()
+                    for x1, y1, x2, y2 in boxes:
+                        mask[
+                        int(y1):int(y2),
+                        int(x1):int(x2),
+                        k
+                        ] = 1
+
+        return mask, axial_processed, axial_skipped, axial_refine_processed
+
+    def search(self) -> SearchResult:
         start_time = time.time()
 
-        print("🔍 Step 1: Searching along axis=2 (axial slices)...")
+        print("🔍 Step 1: Axial multi-slice detection + 3D CC")
 
-        def get_axial_slice(k):
-            return self.data[:, :, k]
-
-        best_k_fine, max_area_k_fine, axial_processed, axial_skipped = self.search_with_refinement(
-            data_axis=get_axial_slice,
-            axis_type="轴向",
-            slice_indices=(0, self.K),
-            sampling_step=self.AXIAL_SAMPLING_STEP,
-            search_range_name="全局"
+        tumor_mask, axial_processed, axial_skipped, axial_refine_processed = (
+            self._build_3d_tumor_mask(axis_type="axial", top_k=5)
         )
 
-        if best_k_fine == -1:
+        if tumor_mask is None or tumor_mask.sum() == 0:
             processing_time = time.time() - start_time
-            print("❌ 未检测到肿瘤,返回每个轴的中间切片")
+            print("❌ No tumor mask found, returning middle slices")
 
             return SearchResult(
                 success=True,
@@ -738,147 +807,127 @@ class TumorSliceFinder:
                 processing_time=processing_time,
                 slices_processed=axial_processed,
                 slices_skipped=axial_skipped,
-                message="No tumor detected, returning middle slices",
+                message="No tumor detected",
                 statistics=None
             )
 
-        print("🔍 获取最佳轴向切片的检测框...")
-        slice_2d = self.data[:, :, best_k_fine]
-        slice_rgb = np.stack([slice_2d] * 3, axis=-1)
-        results = self.model.predict(
-            source=slice_rgb,
-            conf=self.conf,
-            verbose=False,
-            device=None,
-            save=False
-        )
+        # Connected components
+        labeled, num_cc = ndimage.label(tumor_mask)
+        sizes = ndimage.sum_labels(tumor_mask, labeled, range(1, num_cc + 1))
+        largest_cc = np.argmax(sizes) + 1
+        cc_mask = (labeled == largest_cc).astype(np.uint8)
 
-        best_box_axial = None
-        max_area_axial = 0
-        for result in results:
-            if result.boxes is not None and len(result.boxes) > 0:
-                boxes = result.boxes.xywh.cpu().numpy()
-                areas = boxes[:, 2] * boxes[:, 3]
-                max_idx = areas.argmax()
-                if areas[max_idx] > max_area_axial:
-                    max_area_axial = areas[max_idx]
-                    best_box_axial = boxes[max_idx]
+        coords = np.argwhere(cc_mask)
+        i_min, j_min, k_min = coords.min(axis=0)
+        i_max, j_max, k_max = coords.max(axis=0) + 1
 
-        if best_box_axial is None:
-            raise RuntimeError("No tumor detected in the best axial slice!")
+        print(f"🎯 Largest CC bbox: "
+              f"i=[{i_min},{i_max}), "
+              f"j=[{j_min},{j_max}), "
+              f"k=[{k_min},{k_max})")
 
-        cx, cy, w, h = best_box_axial
-        i_center = int(round(cy))
-        j_center = int(round(cx))
-        k_center = best_k_fine
+        # Local search margin (physical space)
+        margin_mm = 3.0
+        margin_i = int(np.ceil(margin_mm / self.spacing[0]))
+        margin_j = int(np.ceil(margin_mm / self.spacing[1]))
 
-        print(f"🎯 Tumor center at volume index: (i={i_center}, j={j_center}, k={k_center})")
-
-        physical_width_mm = w * self.spacing[1]
-        physical_height_mm = h * self.spacing[0]
-
-        search_radius_mm_i = physical_height_mm / 3.0
-        search_radius_mm_j = physical_width_mm / 3.0
-
-        search_radius_i_vox = int(np.ceil(search_radius_mm_i / self.spacing[0]))
-        search_radius_j_vox = int(np.ceil(search_radius_mm_j / self.spacing[1]))
-
-        search_radius_i_vox = max(1, search_radius_i_vox)
-        search_radius_j_vox = max(1, search_radius_j_vox)
-
-        i_start = max(0, i_center - search_radius_i_vox)
-        i_end = min(self.I, i_center + search_radius_i_vox + 1)
-        j_start = max(0, j_center - search_radius_j_vox)
-        j_end = min(self.J, j_center + search_radius_j_vox + 1)
-
-        print(f"📏 Using spacing {self.spacing} → search radii: "
-              f"axis0={search_radius_i_vox} vox, axis1={search_radius_j_vox} vox")
-        print(f"🔍 Search sagittal (i) in [{i_start}, {i_end})")
-        print(f"🔍 Search coronal  (j) in [{j_start}, {j_end})")
+        i_start = max(0, i_min - margin_i)
+        i_end = min(self.I, i_max + margin_i)
+        j_start = max(0, j_min - margin_j)
+        j_end = min(self.J, j_max + margin_j)
 
         print("\n" + "=" * 50)
-        print("Step 2: Searching sagittal slices...")
+        print("Step 2: Sagittal local search (CC-based)")
 
         def get_sagittal_slice(i):
             return self.data[i, :, :]
 
-        best_i_fine, max_area_i_fine, sagittal_processed, sagittal_skipped = self.search_with_refinement(
-            data_axis=get_sagittal_slice,
-            axis_type="矢状面",
-            slice_indices=(i_start, i_end),
-            sampling_step=self.SAGITTAL_SAMPLING_STEP,
-            search_range_name=f"局部[{i_start}, {i_end})",
-            conf_threshold=self.OTHER_AXES_CONF
+        best_i_fine, max_area_i, sagittal_processed, sagittal_skipped = (
+            self.search_with_refinement(
+                data_axis=get_sagittal_slice,
+                axis_type="矢状面",
+                slice_indices=(i_start, i_end),
+                sampling_step=self.SAGITTAL_SAMPLING_STEP,
+                search_range_name=f"CC[{i_start},{i_end})",
+                conf_threshold=self.OTHER_AXES_CONF
+            )
         )
 
         print("\n" + "=" * 50)
-        print("Step 3: Searching coronal slices...")
+        print("Step 3: Coronal local search (CC-based)")
 
         def get_coronal_slice(j):
             return self.data[:, j, :]
 
-        best_j_fine, max_area_j_fine, coronal_processed, coronal_skipped = self.search_with_refinement(
-            data_axis=get_coronal_slice,
-            axis_type="冠状面",
-            slice_indices=(j_start, j_end),
-            sampling_step=self.CORONAL_SAMPLING_STEP,
-            search_range_name=f"局部[{j_start}, {j_end})",
-            conf_threshold=self.OTHER_AXES_CONF
+        best_j_fine, max_area_j, coronal_processed, coronal_skipped = (
+            self.search_with_refinement(
+                data_axis=get_coronal_slice,
+                axis_type="冠状面",
+                slice_indices=(j_start, j_end),
+                sampling_step=self.CORONAL_SAMPLING_STEP,
+                search_range_name=f"CC[{j_start},{j_end})",
+                conf_threshold=self.OTHER_AXES_CONF
+            )
         )
 
         processing_time = time.time() - start_time
-        total_processed = axial_processed + sagittal_processed + coronal_processed
-        total_skipped = axial_skipped + sagittal_skipped + coronal_skipped
-                
-        detection_areas = {
-            'axial': max_area_k_fine,
-            'sagittal': max_area_i_fine if best_i_fine != -1 else None,
-            'coronal': max_area_j_fine if best_j_fine != -1 else None
-        }
-                
-        statistics = {
-            'axial_processed': axial_processed,
-            'axial_skipped': axial_skipped,
-            'sagittal_processed': sagittal_processed,
-            'sagittal_skipped': sagittal_skipped,
-            'coronal_processed': coronal_processed,
-            'coronal_skipped': coronal_skipped,
-            'search_radii': {
-                'i_vox': search_radius_i_vox,
-                'j_vox': search_radius_j_vox
-            }
-        }
-                
+
+        total_processed = (
+                axial_processed +
+                axial_refine_processed +
+                sagittal_processed +
+                coronal_processed
+        )
+
+        total_skipped = (
+                axial_skipped +
+                sagittal_skipped +
+                coronal_skipped
+        )
+
         result = SearchResult(
             success=True,
             has_tumor=True,
-            axial_slice=k_center,
-            sagittal_slice=best_i_fine if best_i_fine != -1 else i_center,
-            coronal_slice=best_j_fine if best_j_fine != -1 else j_center,
-            tumor_center=(i_center, j_center, k_center),
-            detection_areas=detection_areas,
+            axial_slice=(k_min + k_max) // 2,
+            sagittal_slice=best_i_fine if best_i_fine != -1 else (i_min + i_max) // 2,
+            coronal_slice=best_j_fine if best_j_fine != -1 else (j_min + j_max) // 2,
+            tumor_center=(
+                (i_min + i_max) // 2,
+                (j_min + j_max) // 2,
+                (k_min + k_max) // 2
+            ),
+            detection_areas={
+                "axial": None,
+                "sagittal": max_area_i if best_i_fine != -1 else None,
+                "coronal": max_area_j if best_j_fine != -1 else None
+            },
             units=self.get_units(),
             processing_time=processing_time,
             slices_processed=total_processed,
             slices_skipped=total_skipped,
-            message="Hierarchical search completed successfully",
-            statistics=statistics
+            message="CC-based hierarchical search completed",
+            statistics={
+                "cc_bbox": {
+                    "i": (i_min, i_max),
+                    "j": (j_min, j_max),
+                    "k": (k_min, k_max)
+                }
+            }
         )
-                
-        # 保存所有最佳切片
+
         saved_files = self.save_slices(result, self.output_project)
-        result.message += f" | Slices saved: {list(saved_files.keys())}"
-                
+        result.message += f" | Saved: {list(saved_files.keys())}"
+
         return result
 
 
 def convert_to_serializable(obj):
     """
     将numpy类型转换为Python原生类型，以便JSON序列化
-    
+
     Args:
         obj: 需要转换的对象
-        
+
     Returns:
         转换后的对象
     """
@@ -901,7 +950,7 @@ def convert_to_serializable(obj):
 def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = ""):
     """
     保存对比结果报告
-    
+
     Args:
         results: 包含两种方法结果的字典
         output_dir: 报告输出目录
@@ -909,14 +958,14 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
     """
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
     # 准备报告数据
     report = {
         'comparison_timestamp': timestamp,
         'nii_file': nii_filename,
         'methods': {}
     }
-    
+
     # 处理方法1的结果
     if results.get('full_search'):
         r1 = results['full_search']
@@ -932,7 +981,7 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
             'slices_skipped': r1.slices_skipped,
             'message': r1.message
         }
-    
+
     # 处理方法2的结果
     if results.get('hierarchical_search'):
         r2 = results['hierarchical_search']
@@ -951,21 +1000,22 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
             'message': r2.message,
             'units': r2.units
         }
-    
+
     # 计算性能对比
     if results.get('full_search') and results.get('hierarchical_search'):
         r1 = results['full_search']
         r2 = results['hierarchical_search']
-        
+
         report['performance_comparison'] = {
             'time_full_search': round(r1.processing_time, 3),
             'time_hierarchical_search': round(r2.processing_time, 3),
             'speedup_ratio': round(r1.processing_time / r2.processing_time, 2) if r2.processing_time > 0 else None,
             'slices_full_search': r1.slices_processed,
             'slices_hierarchical_search': r2.slices_processed,
-            'efficiency_improvement': round((1 - r2.slices_processed / r1.slices_processed) * 100, 2) if r1.slices_processed > 0 else None
+            'efficiency_improvement': round((1 - r2.slices_processed / r1.slices_processed) * 100,
+                                            2) if r1.slices_processed > 0 else None
         }
-    
+
     # 保存JSON报告
     json_path = os.path.join(output_dir, f"comparison_report_{timestamp}.json")
     # 转换所有numpy类型为Python原生类型
@@ -973,7 +1023,7 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(serializable_report, f, ensure_ascii=False, indent=2)
     print(f"\n📄 JSON报告已保存: {json_path}")
-    
+
     # 保存文本报告
     txt_path = os.path.join(output_dir, f"comparison_report_{timestamp}.txt")
     with open(txt_path, 'w', encoding='utf-8') as f:
@@ -982,7 +1032,7 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
         f.write("=" * 80 + "\n\n")
         f.write(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"NIfTI文件: {nii_filename}\n\n")
-        
+
         # 方法1详情
         if results.get('full_search'):
             r1 = results['full_search']
@@ -998,7 +1048,7 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
             f.write(f"  处理切片数: {r1.slices_processed}\n")
             f.write(f"  跳过切片数: {r1.slices_skipped}\n")
             f.write(f"  说明: {r1.message}\n\n")
-        
+
         # 方法2详情
         if results.get('hierarchical_search'):
             r2 = results['hierarchical_search']
@@ -1020,12 +1070,12 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
             f.write(f"  处理切片数: {r2.slices_processed}\n")
             f.write(f"  跳过切片数: {r2.slices_skipped}\n")
             f.write(f"  说明: {r2.message}\n\n")
-        
+
         # 性能对比
         if results.get('full_search') and results.get('hierarchical_search'):
             r1 = results['full_search']
             r2 = results['hierarchical_search']
-            
+
             f.write("=" * 80 + "\n")
             f.write("性能对比\n")
             f.write("=" * 80 + "\n")
@@ -1034,13 +1084,13 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
             if r2.processing_time > 0:
                 speedup = r1.processing_time / r2.processing_time
                 f.write(f"  加速比: {speedup:.2f}x\n")
-            
+
             f.write(f"\n  方法1处理切片数: {r1.slices_processed}\n")
             f.write(f"  方法2处理切片数: {r2.slices_processed}\n")
             if r1.slices_processed > 0:
                 improvement = (1 - r2.slices_processed / r1.slices_processed) * 100
                 f.write(f"  效率提升: {improvement:.2f}%\n")
-            
+
             f.write("\n" + "=" * 80 + "\n")
             f.write("总结\n")
             f.write("=" * 80 + "\n")
@@ -1048,7 +1098,7 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
             if r1.has_tumor and r2.has_tumor:
                 f.write(f"  推荐使用: 方法2 (智能分层搜索) - 速度更快，效率更高\n")
             f.write("\n")
-    
+
     print(f"📄 文本报告已保存: {txt_path}")
     return json_path, txt_path
 
@@ -1056,10 +1106,10 @@ def save_comparison_report(results: Dict, output_dir: str, nii_filename: str = "
 def load_yolo_model(model_path: str) -> YOLO:
     """
     加载YOLO模型（只加载一次，可复用）
-    
+
     Args:
         model_path: YOLO模型路径
-        
+
     Returns:
         加载好的YOLO模型实例
     """
@@ -1073,11 +1123,11 @@ def load_yolo_model(model_path: str) -> YOLO:
 
 
 def compare_methods(model, nii_path: str, output_project: str, conf: float = 0.65,
-                   slice_threshold: Optional[float] = None, std_threshold: Optional[float] = None,
-                   use_adaptive_thresholds: bool = True):
+                    slice_threshold: Optional[float] = None, std_threshold: Optional[float] = None,
+                    use_adaptive_thresholds: bool = True):
     """
     比较两种方法的性能和结果
-    
+
     Args:
         model: 已加载的YOLO模型实例
         nii_path: NIfTI文件路径
@@ -1086,17 +1136,17 @@ def compare_methods(model, nii_path: str, output_project: str, conf: float = 0.6
         slice_threshold: 切片预过滤阈值(非零像素比例)，如果为None且use_adaptive_thresholds=True则自动计算
         std_threshold: 切片标准差阈值，如果为None且use_adaptive_thresholds=True则自动计算
         use_adaptive_thresholds: 是否使用自适应阈值（推荐True）
-    
+
     Returns:
         包含两种方法结果的字典
     """
     print("=" * 70)
     print("开始比较两种检测方法")
     print("=" * 70)
-    
+
     results = {}
     nii_filename = os.path.basename(nii_path)
-    
+
     print("\n" + "=" * 70)
     print("方法1: 全轴暴力搜索")
     print("=" * 70)
@@ -1112,7 +1162,7 @@ def compare_methods(model, nii_path: str, output_project: str, conf: float = 0.6
         )
         result1 = detector1.search()
         results['full_search'] = result1
-        
+
         print(f"\n✅ 方法1完成:")
         print(f"   - 检测到肿瘤: {result1.has_tumor}")
         print(f"   - 最佳轴: {result1.best_axis}")
@@ -1125,7 +1175,7 @@ def compare_methods(model, nii_path: str, output_project: str, conf: float = 0.6
         import traceback
         traceback.print_exc()
         results['full_search'] = None
-    
+
     print("\n" + "=" * 70)
     print("方法2: 智能分层搜索")
     print("=" * 70)
@@ -1141,7 +1191,7 @@ def compare_methods(model, nii_path: str, output_project: str, conf: float = 0.6
         )
         result2 = detector2.search()
         results['hierarchical_search'] = result2
-        
+
         print(f"\n✅ 方法2完成:")
         print(f"   - 检测到肿瘤: {result2.has_tumor}")
         print(f"   - 轴向切片: {result2.axial_slice}")
@@ -1156,41 +1206,41 @@ def compare_methods(model, nii_path: str, output_project: str, conf: float = 0.6
         import traceback
         traceback.print_exc()
         results['hierarchical_search'] = None
-    
+
     # 保存对比报告
     print("\n" + "=" * 70)
     print("生成对比报告")
     print("=" * 70)
     report_dir = os.path.join(output_project, "comparison_reports")
     json_path, txt_path = save_comparison_report(results, report_dir, nii_filename)
-    
+
     print("\n" + "=" * 70)
     print("比较总结")
     print("=" * 70)
     if results['full_search'] and results['hierarchical_search']:
         r1 = results['full_search']
         r2 = results['hierarchical_search']
-        
+
         print(f"方法1处理时间: {r1.processing_time:.2f}s, 处理切片: {r1.slices_processed}")
         print(f"方法2处理时间: {r2.processing_time:.2f}s, 处理切片: {r2.slices_processed}")
-        
+
         if r1.processing_time > 0:
             speedup = r1.processing_time / r2.processing_time
             print(f"方法2加速比: {speedup:.2f}x")
-        
+
         print(f"\n📊 详细报告已保存到:")
         print(f"   JSON: {json_path}")
         print(f"   TXT:  {txt_path}")
-    
+
     return results
 
 
 def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, conf: float = 0.65,
-                         slice_threshold: Optional[float] = None, std_threshold: Optional[float] = None,
-                         use_adaptive_thresholds: bool = True):
+                          slice_threshold: Optional[float] = None, std_threshold: Optional[float] = None,
+                          use_adaptive_thresholds: bool = True):
     """
     批量比较两种方法
-    
+
     Args:
         model_path: 模型路径
         nii_dir: 包含nii.gz文件的目录
@@ -1199,35 +1249,35 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
         slice_threshold: 切片预过滤阈值(非零像素比例)，如果为None且use_adaptive_thresholds=True则自动计算
         std_threshold: 切片标准差阈值，如果为None且use_adaptive_thresholds=True则自动计算
         use_adaptive_thresholds: 是否使用自适应阈值（推荐True）
-    
+
     Returns:
         所有文件的对比结果列表
     """
     # 一次性加载模型
     model = load_yolo_model(model_path)
-    
+
     # 获取所有nii.gz文件
     nii_files = [f for f in os.listdir(nii_dir) if f.endswith('.nii.gz')]
-    
+
     if not nii_files:
         print(f"❌ 在目录 {nii_dir} 中未找到nii.gz文件")
         return []
-    
+
     print(f"📁 找到 {len(nii_files)} 个nii.gz文件")
     print("=" * 80)
-    
+
     all_results = []
-    
+
     for idx, nii_file in enumerate(nii_files, 1):
         nii_path = os.path.join(nii_dir, nii_file)
         # 从文件名提取标识符（去掉.nii.gz后缀）
         file_id = nii_file.replace('.nii.gz', '')
         output_project = os.path.join(output_base_dir, file_id)
-        
+
         print(f"\n{'=' * 80}")
         print(f"处理文件 [{idx}/{len(nii_files)}]: {nii_file}")
         print(f"{'=' * 80}")
-        
+
         try:
             results = compare_methods(
                 model=model,
@@ -1238,7 +1288,7 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
                 std_threshold=std_threshold,
                 use_adaptive_thresholds=use_adaptive_thresholds
             )
-            
+
             # 收集统计信息
             summary = {
                 'file_name': nii_file,
@@ -1246,7 +1296,7 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
                 'full_search': None,
                 'hierarchical_search': None
             }
-            
+
             if results.get('full_search'):
                 r1 = results['full_search']
                 summary['full_search'] = {
@@ -1257,7 +1307,7 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
                     'processing_time': round(r1.processing_time, 3),
                     'slices_processed': r1.slices_processed
                 }
-            
+
             if results.get('hierarchical_search'):
                 r2 = results['hierarchical_search']
                 summary['hierarchical_search'] = {
@@ -1270,7 +1320,7 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
                     'slices_processed': r2.slices_processed,
                     'slices_skipped': r2.slices_skipped
                 }
-            
+
             # 计算加速比
             if results.get('full_search') and results.get('hierarchical_search'):
                 r1 = results['full_search']
@@ -1281,9 +1331,9 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
                     summary['efficiency_improvement'] = round(
                         (1 - r2.slices_processed / r1.slices_processed) * 100, 2
                     )
-            
+
             all_results.append(summary)
-            
+
         except Exception as e:
             print(f"❌ 处理文件 {nii_file} 时出错: {e}")
             import traceback
@@ -1293,23 +1343,23 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
                 'file_id': file_id,
                 'error': str(e)
             })
-    
+
     # 生成汇总报告
     print("\n" + "=" * 80)
     print("生成批量处理汇总报告")
     print("=" * 80)
-    
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     summary_dir = os.path.join(output_base_dir, "batch_summary")
     os.makedirs(summary_dir, exist_ok=True)
-    
+
     # 保存JSON汇总
     json_summary_path = os.path.join(summary_dir, f"batch_summary_{timestamp}.json")
     serializable_summary = convert_to_serializable(all_results)
     with open(json_summary_path, 'w', encoding='utf-8') as f:
         json.dump(serializable_summary, f, ensure_ascii=False, indent=2)
     print(f"📄 JSON汇总报告已保存: {json_summary_path}")
-    
+
     # 保存TXT汇总
     txt_summary_path = os.path.join(summary_dir, f"batch_summary_{timestamp}.txt")
     with open(txt_summary_path, 'w', encoding='utf-8') as f:
@@ -1319,29 +1369,35 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
         f.write(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"处理文件数: {len(all_results)}\n")
         f.write(f"NIfTI目录: {nii_dir}\n\n")
-        
+
         # 统计信息
         total_files = len(all_results)
         files_with_tumor_method1 = sum(1 for r in all_results if r.get('full_search', {}).get('has_tumor', False))
-        files_with_tumor_method2 = sum(1 for r in all_results if r.get('hierarchical_search', {}).get('has_tumor', False))
-        
+        files_with_tumor_method2 = sum(
+            1 for r in all_results if r.get('hierarchical_search', {}).get('has_tumor', False))
+
         f.write("-" * 80 + "\n")
         f.write("总体统计\n")
         f.write("-" * 80 + "\n")
         f.write(f"  总文件数: {total_files}\n")
         f.write(f"  方法1检测到肿瘤的文件数: {files_with_tumor_method1}\n")
         f.write(f"  方法2检测到肿瘤的文件数: {files_with_tumor_method2}\n")
-        
+
         # 计算平均性能
         valid_results = [r for r in all_results if 'error' not in r]
         if valid_results:
-            avg_time_method1 = np.mean([r['full_search']['processing_time'] for r in valid_results if r.get('full_search')])
-            avg_time_method2 = np.mean([r['hierarchical_search']['processing_time'] for r in valid_results if r.get('hierarchical_search')])
-            avg_slices_method1 = np.mean([r['full_search']['slices_processed'] for r in valid_results if r.get('full_search')])
-            avg_slices_method2 = np.mean([r['hierarchical_search']['slices_processed'] for r in valid_results if r.get('hierarchical_search')])
+            avg_time_method1 = np.mean(
+                [r['full_search']['processing_time'] for r in valid_results if r.get('full_search')])
+            avg_time_method2 = np.mean(
+                [r['hierarchical_search']['processing_time'] for r in valid_results if r.get('hierarchical_search')])
+            avg_slices_method1 = np.mean(
+                [r['full_search']['slices_processed'] for r in valid_results if r.get('full_search')])
+            avg_slices_method2 = np.mean(
+                [r['hierarchical_search']['slices_processed'] for r in valid_results if r.get('hierarchical_search')])
             avg_speedup = np.mean([r['speedup_ratio'] for r in valid_results if 'speedup_ratio' in r])
-            avg_efficiency = np.mean([r['efficiency_improvement'] for r in valid_results if 'efficiency_improvement' in r])
-            
+            avg_efficiency = np.mean(
+                [r['efficiency_improvement'] for r in valid_results if 'efficiency_improvement' in r])
+
             f.write(f"\n  平均处理时间:\n")
             f.write(f"    方法1: {avg_time_method1:.3f} 秒\n")
             f.write(f"    方法2: {avg_time_method2:.3f} 秒\n")
@@ -1350,19 +1406,19 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
             f.write(f"    方法1: {avg_slices_method1:.1f}\n")
             f.write(f"    方法2: {avg_slices_method2:.1f}\n")
             f.write(f"    平均效率提升: {avg_efficiency:.2f}%\n")
-        
+
         f.write("\n" + "=" * 80 + "\n")
         f.write("详细结果\n")
         f.write("=" * 80 + "\n\n")
-        
+
         for idx, result in enumerate(all_results, 1):
             f.write(f"[{idx}] {result['file_name']}\n")
             f.write("-" * 80 + "\n")
-            
+
             if 'error' in result:
                 f.write(f"  ❌ 错误: {result['error']}\n\n")
                 continue
-            
+
             # 方法1结果
             if result.get('full_search'):
                 fs = result['full_search']
@@ -1374,9 +1430,9 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
                     f.write(f"    最大面积: {fs['max_area']:.2f}\n")
                 f.write(f"    处理时间: {fs['processing_time']:.3f} 秒\n")
                 f.write(f"    处理切片数: {fs['slices_processed']}\n")
-            
+
             f.write("\n")
-            
+
             # 方法2结果
             if result.get('hierarchical_search'):
                 hs = result['hierarchical_search']
@@ -1390,29 +1446,29 @@ def batch_compare_methods(model_path: str, nii_dir: str, output_base_dir: str, c
                 f.write(f"    处理时间: {hs['processing_time']:.3f} 秒\n")
                 f.write(f"    处理切片数: {hs['slices_processed']}\n")
                 f.write(f"    跳过切片数: {hs['slices_skipped']}\n")
-            
+
             f.write("\n")
-            
+
             # 性能对比
             if 'speedup_ratio' in result:
                 f.write(f"  性能对比:\n")
                 f.write(f"    加速比: {result['speedup_ratio']:.2f}x\n")
                 if 'efficiency_improvement' in result:
                     f.write(f"    效率提升: {result['efficiency_improvement']:.2f}%\n")
-            
+
             f.write("\n" + "=" * 80 + "\n\n")
-    
+
     print(f"📄 TXT汇总报告已保存: {txt_summary_path}")
     print(f"\n✅ 批量处理完成！共处理 {len(all_results)} 个文件")
-    
+
     return all_results
 
 
 if __name__ == "__main__":
     model_path = r'H:\pycharm_project\PI-MAPP\project\detection_train\tumor\runs\detect\train_yolo12_try_owndata2\weights\best.pt'
-    nii_dir = r"H:\data\QSM\HC_Data_raw_filtered_output"
-    output_base_dir = r'H:\data\QSM\HC_Data_raw\comparison_results'
-    
+    nii_dir = r"H:\data\tumor_data_swust\data1_output\filtered"
+    output_base_dir = r'H:\data\tumor_data_swust\data1_output\filtered_output5'
+
     # 批量处理所有文件
     all_results = batch_compare_methods(
         model_path=model_path,
