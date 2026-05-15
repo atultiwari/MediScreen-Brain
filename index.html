@@ -130,6 +130,134 @@
     }
     .cards h3 { font-size: 1.1rem; margin-bottom: 8px; }
     .cards p { color: var(--muted); margin: 0; }
+    .demo-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+      margin-top: 24px;
+    }
+    .demo-item {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      background: linear-gradient(145deg, #ffffff, #f9fbfa);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .demo-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(15, 92, 87, 0.12);
+    }
+    .demo-video {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: #f0f0f0;
+      min-height: 200px;
+    }
+    .demo-caption {
+      padding: 14px 16px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ink);
+      text-align: center;
+    }
+    .demo-item {
+      cursor: pointer;
+      position: relative;
+    }
+    .demo-item::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(16, 33, 45, 0.9);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      white-space: nowrap;
+      z-index: 10;
+    }
+    .demo-item:hover::after {
+      opacity: 1;
+    }
+    /* Video Modal Styles */
+    .video-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(16, 33, 45, 0.5);
+      backdrop-filter: blur(12px);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .video-modal.active {
+      display: flex;
+      opacity: 1;
+    }
+    .modal-content {
+      position: relative;
+      max-width: 90vw;
+      max-height: 90vh;
+      animation: modalZoomIn 0.3s ease;
+    }
+    @keyframes modalZoomIn {
+      from {
+        transform: scale(0.8);
+        opacity: 0;
+      }
+      to {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+    .modal-video {
+      max-width: 90vw;
+      max-height: 85vh;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+    .modal-close {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      font-size: 1.5rem;
+      line-height: 1;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-close:hover {
+      background: rgba(255, 255, 255, 0.3);
+      border-color: #fff;
+      transform: rotate(90deg);
+    }
+    .modal-caption {
+      text-align: center;
+      color: #fff;
+      margin-top: 16px;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
     [lang=zh] { display: none; }
     [lang=en] { display: block; }
     footer {
@@ -143,6 +271,7 @@
       .topbar { grid-template-columns: auto 1fr auto auto; gap: 12px 18px; padding: 12px 20px; }
       nav { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; gap: 14px; }
       .cards { grid-template-columns: 1fr; }
+      .demo-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 720px) {
       .topbar { gap: 10px 12px; padding: 10px 16px; }
@@ -168,18 +297,20 @@
 
   <div class="topbar">
     <a href="#" class="brand">
-      <img src="img/logo.png" alt="logo">
+      <img src="assets/img/logo.png" alt="logo">
       MediScreen-Brain
     </a>
     <nav>
       <a href="#features" lang="zh">核心功能</a>
       <a href="#features" lang="en">Features</a>
+      <a href="#demo" lang="zh">界面演示</a>
+      <a href="#demo" lang="en">Demo</a>
       <a href="#tech" lang="zh">技术架构</a>
       <a href="#tech" lang="en">Tech</a>
       <a href="#get" lang="zh">快速开始</a>
       <a href="#get" lang="en">Get Started</a>
-      <a href="PROJECT_DOCUMENTATION_ZN.md" download lang="zh">文档</a>
-      <a href="PROJECT_DOCUMENTATION_EN.md" download lang="en">Docs</a>
+      <a href="doc/PROJECT_DOCUMENTATION_ZN.md" download lang="zh">文档</a>
+      <a href="doc/PROJECT_DOCUMENTATION_EN.md" download lang="en">Docs</a>
     </nav>
     <button class="lang-switch" id="langBtn">中文 / EN</button>
     <div class="topbar-actions">
@@ -240,6 +371,55 @@
       </div>
     </section>
 
+    <section id="demo" class="panel">
+      <h2 lang="zh">界面演示</h2>
+      <h2 lang="en">Interface Demo</h2>
+      <p lang="zh" style="color: var(--muted); margin-bottom: 24px;">直观感受系统操作流程与功能展示</p>
+      <p lang="en" style="color: var(--muted); margin-bottom: 24px;">Visual walkthrough of system workflow and features</p>
+      <div class="demo-grid">
+        <div class="demo-item" data-video="assets/video/single_image_converted.mp4" data-caption-zh="单图检测" data-caption-en="Single Image Detection" data-tooltip-zh="单击放大" data-tooltip-en="Click to enlarge">
+          <video class="demo-video" autoplay loop muted playsinline preload="auto" controlsList="nodownload">
+            <source src="assets/video/single_image_converted.mp4" type="video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"">
+            <source src="assets/video/single_image_converted.mp4" type="video/mp4">
+            <p lang="zh">您的浏览器不支持视频播放</p>
+            <p lang="en">Your browser does not support video playback</p>
+          </video>
+          <div class="demo-caption" lang="zh">单图检测</div>
+          <div class="demo-caption" lang="en">Single Image Detection</div>
+        </div>
+        <div class="demo-item" data-video="assets/video/Batch_results_converted.mp4" data-caption-zh="批量处理结果" data-caption-en="Batch Processing Results" data-tooltip-zh="单击放大" data-tooltip-en="Click to enlarge">
+          <video class="demo-video" autoplay loop muted playsinline preload="auto" controlsList="nodownload">
+            <source src="assets/video/Batch_results_converted.mp4" type="video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"">
+            <source src="assets/video/Batch_results_converted.mp4" type="video/mp4">
+            <p lang="zh">您的浏览器不支持视频播放</p>
+            <p lang="en">Your browser does not support video playback</p>
+          </video>
+          <div class="demo-caption" lang="zh">批量处理结果</div>
+          <div class="demo-caption" lang="en">Batch Processing Results</div>
+        </div>
+        <div class="demo-item" data-video="assets/video/NifTi_converted.mp4" data-caption-zh="NIfTI 三维分析" data-caption-en="NIfTI 3D Analysis" data-tooltip-zh="单击放大" data-tooltip-en="Click to enlarge">
+          <video class="demo-video" autoplay loop muted playsinline preload="auto" controlsList="nodownload">
+            <source src="assets/video/NifTi_converted.mp4" type="video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"">
+            <source src="assets/video/NifTi_converted.mp4" type="video/mp4">
+            <p lang="zh">您的浏览器不支持视频播放</p>
+            <p lang="en">Your browser does not support video playback</p>
+          </video>
+          <div class="demo-caption" lang="zh">NIfTI 三维分析</div>
+          <div class="demo-caption" lang="en">NIfTI 3D Analysis</div>
+        </div>
+        <div class="demo-item" data-video="assets/video/conversion_converted.mp4" data-caption-zh="格式转换工具" data-caption-en="Format Conversion Tool" data-tooltip-zh="单击放大" data-tooltip-en="Click to enlarge">
+          <video class="demo-video" autoplay loop muted playsinline preload="auto" controlsList="nodownload">
+            <source src="assets/video/conversion_converted.mp4" type="video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"">
+            <source src="assets/video/conversion_converted.mp4" type="video/mp4">
+            <p lang="zh">您的浏览器不支持视频播放</p>
+            <p lang="en">Your browser does not support video playback</p>
+          </video>
+          <div class="demo-caption" lang="zh">格式转换工具</div>
+          <div class="demo-caption" lang="en">Format Conversion Tool</div>
+        </div>
+      </div>
+    </section>
+
     <section id="tech" class="panel">
       <h2 lang="zh">技术架构</h2>
       <h2 lang="en">Tech Stack</h2>
@@ -265,20 +445,29 @@
       <p lang="zh">轻量便携 · 即开即用 · 零配置体验</p>
       <p lang="en">Lightweight & Portable · Instant Launch · Zero Configuration</p>
       <div class="actions">
-        <a href="#" class="btn" lang="zh">下载软件</a>
-        <a href="#" class="btn" lang="en">Download Software</a>
+        <a href="https://github.com/JingW-ui/MediScreen-Brain/releases/download/MediScreen-Brain/MediScreen-Brain_1.0.3.exe" class="btn" lang="zh">下载软件</a>
+        <a href="https://github.com/JingW-ui/MediScreen-Brain/releases/download/MediScreen-Brain/MediScreen-Brain_1.0.3.exe" class="btn" lang="en">Download Software</a>
         <a href="https://github.com/JingW-ui/MediScreen-Brain" class="btn ghost" lang="zh">下载源码</a>
         <a href="https://github.com/JingW-ui/MediScreen-Brain" class="btn ghost" lang="en">Source Code</a>
       </div>
     </section>
   </main>
 
+  <!-- Video Modal -->
+  <div class="video-modal" id="videoModal">
+    <div class="modal-content">
+      <button class="modal-close" id="modalClose">&times;</button>
+      <video class="modal-video" id="modalVideo" controls></video>
+      <div class="modal-caption" id="modalCaption"></div>
+    </div>
+  </div>
+
   <footer>
     <div lang="en">© 2026 MediScreen-Brain · For research & education only</div>
     <div lang="zh">© 2026 MediScreen-Brain · 仅供医学研究与教学使用</div>
     <div>
-      <a href="PROJECT_DOCUMENTATION_ZN.md" download lang="zh">中文文档</a>
-      <a href="PROJECT_DOCUMENTATION_EN.md" download lang="en">English Docs</a>
+      <a href="doc/PROJECT_DOCUMENTATION_ZN.md" download lang="zh">中文文档</a>
+      <a href="doc/PROJECT_DOCUMENTATION_EN.md" download lang="en">English Docs</a>
        · 
       <a href="https://github.com/JingW-ui/MediScreen-Brain/issues" lang="en">Support</a>
       <a href="https://github.com/JingW-ui/MediScreen-Brain/issues" lang="zh">技术支持</a>
@@ -297,6 +486,84 @@
       document.querySelectorAll('[lang=zh]').forEach(el => el.style.display = isZh ? 'block' : 'none');
       document.querySelectorAll('[lang=en]').forEach(el => el.style.display = isZh ? 'none' : 'block');
       langBtn.textContent = isZh ? '中文 / EN' : 'EN / 中文';
+    });
+
+    // Ensure videos autoplay after page load
+    window.addEventListener('load', () => {
+      const videos = document.querySelectorAll('.demo-video');
+      videos.forEach(video => {
+        video.play().catch(error => {
+          console.log('Video autoplay failed:', error);
+          // Try to play again with user interaction
+          video.muted = true;
+          video.play().catch(e => console.log('Second attempt failed:', e));
+        });
+      });
+    });
+
+    // Video Modal Functionality
+    const modal = document.getElementById('videoModal');
+    const modalVideo = document.getElementById('modalVideo');
+    const modalClose = document.getElementById('modalClose');
+    const modalCaption = document.getElementById('modalCaption');
+    const demoItems = document.querySelectorAll('.demo-item');
+
+    // Open modal on click
+    demoItems.forEach(item => {
+      item.addEventListener('click', () => {
+        const videoSrc = item.getAttribute('data-video');
+        const captionZh = item.getAttribute('data-caption-zh');
+        const captionEn = item.getAttribute('data-caption-en');
+        
+        // Set video source
+        modalVideo.src = videoSrc;
+        
+        // Set caption based on current language
+        modalCaption.textContent = isZh ? captionZh : captionEn;
+        
+        // Show modal
+        modal.classList.add('active');
+        
+        // Play video
+        modalVideo.play().catch(e => console.log('Modal video play failed:', e));
+      });
+
+      // Update tooltip based on language
+      const updateTooltip = () => {
+        const tooltipZh = item.getAttribute('data-tooltip-zh');
+        const tooltipEn = item.getAttribute('data-tooltip-en');
+        item.setAttribute('data-tooltip', isZh ? tooltipZh : tooltipEn);
+      };
+      
+      // Initialize tooltip
+      updateTooltip();
+      
+      // Listen for language changes
+      langBtn.addEventListener('click', updateTooltip);
+    });
+
+    // Close modal function
+    function closeModal() {
+      modal.classList.remove('active');
+      modalVideo.pause();
+      modalVideo.src = '';
+    }
+
+    // Close on button click
+    modalClose.addEventListener('click', closeModal);
+
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal.classList.contains('active')) {
+        closeModal();
+      }
     });
   </script>
 </body>
