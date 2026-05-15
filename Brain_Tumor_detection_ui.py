@@ -11,7 +11,7 @@ from ultralytics import YOLO
 from utils.TumorSliceFinder import TumorSliceFinder
 import nibabel as nib
 import openpyxl
-from openpyxl.styles import Font, Alignment, Border, Side, PatternFill, Color
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 
 
 # 处理打包环境
@@ -21,6 +21,53 @@ if getattr(sys, 'frozen', False):
 else:
     # 开发环境
     base_dir = Path(__file__).parent
+
+def get_resource_path(relative_path):
+    """获取资源文件的绝对路径（兼容打包环境）"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的环境
+        base_path = Path(sys._MEIPASS)
+    else:
+        # 开发环境
+        base_path = Path(__file__).parent
+    return base_path / relative_path
+
+
+def get_runtime_dir(relative_path):
+    """获取运行时目录的绝对路径（用于创建历史记录等运行时数据）
+    
+    注意：与 get_resource_path 不同，运行时目录应该在可执行文件所在目录创建，
+    而不是在打包的临时目录中。
+    """
+    if getattr(sys, 'frozen', False):
+        # 打包后的环境：在可执行文件所在目录创建
+        base_path = Path(sys.executable).parent
+    else:
+        # 开发环境：在项目根目录创建
+        base_path = Path(__file__).parent
+    return base_path / relative_path
+
+
+def get_runtime_dir(relative_path):
+    """获取运行时目录的绝对路径（用于创建历史记录等运行时数据）"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的环境：在可执行文件所在目录创建
+        base_path = Path(sys.executable).parent
+    else:
+        # 开发环境：在项目根目录创建
+        base_path = Path(__file__).parent
+    return base_path / relative_path
+
+
+def get_runtime_dir(relative_path):
+    """获取运行时目录的绝对路径（用于创建历史记录等运行时数据）"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的环境：在可执行文件所在目录创建
+        base_path = Path(sys.executable).parent
+    else:
+        # 开发环境：在项目根目录创建
+        base_path = Path(__file__).parent
+    return base_path / relative_path
 
 class StyleManager:
     """Style Manager - Provides gradient and modern UI styles"""
@@ -379,12 +426,39 @@ class CameraManager:
         """Scan available cameras"""
         self.cameras = []
 
-        # Detect cameras (check first 8 indices)
-        for i in range(8):  # Extended to 8 camera detection
-            cap = cv2.VideoCapture(i)
-            if cap.isOpened():
-                ret, frame = cap.read()
-                if ret and frame is not None:
+        # Suppress OpenCV warnings during camera detection
+        import sys
+        import os
+        
+        # Save original stderr
+        original_stderr = sys.stderr
+        
+        try:
+            # Redirect stderr to suppress OpenCV warnings
+            sys.stderr = open(os.devnull, 'w')
+            
+            # Detect cameras (check first 2 indices - most systems have 0-1 cameras)
+            MAX_CAMERAS = 2
+            
+            for i in range(MAX_CAMERAS):
+                try:
+                    # Explicitly specify CAP_DSHOW backend for Windows stability
+                    cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+                    
+                    if not cap.isOpened():
+                        cap.release()
+                        continue
+                    
+                    # Use grab() instead of read() for safer availability check
+                    if not cap.grab():
+                        cap.release()
+                        continue
+                    
+                    ret, frame = cap.read()
+                    if not ret or frame is None:
+                        cap.release()
+                        continue
+                    
                     # Get camera information
                     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -399,7 +473,24 @@ class CameraManager:
                         'cap': None  # Reserve camera object position
                     }
                     self.cameras.append(camera_info)
-                cap.release()
+                    
+                    # Properly release camera
+                    cap.release()
+                    del cap
+                    
+                    # Found a working camera, but continue to check for more
+                    
+                except Exception as e:
+                    print(f"Error detecting camera {i}: {e}")
+                    try:
+                        cap.release()
+                    except:
+                        pass
+                    continue
+        finally:
+            # Restore original stderr
+            sys.stderr.close()
+            sys.stderr = original_stderr
 
         # If no cameras, add virtual camera for testing
         if not self.cameras:
@@ -468,10 +559,10 @@ class ModelManager:
 
     def __init__(self):
         self.models_paths = [
-            Path("pt_models"),
-            Path("onnx_models"),
-            Path("../models"),
-            Path("weights"),
+            get_resource_path("pt_models"),
+            get_resource_path("onnx_models"),
+            get_resource_path("../models"),
+            get_resource_path("weights"),
         ]
         self.current_model = None
         self.class_names = []
@@ -626,7 +717,8 @@ class DetectionThread(QThread):
             self.error_occurred.emit("Video file not found")
             return
 
-        cap = cv2.VideoCapture(self.source_path)
+        # Use CAP_FFMPEG for video files (more compatible)
+        cap = cv2.VideoCapture(self.source_path, cv2.CAP_FFMPEG)
         if not cap.isOpened():
             self.error_occurred.emit("Video file open error")
             return
@@ -675,7 +767,8 @@ class DetectionThread(QThread):
 
     def _process_camera(self):
         """处理摄像头"""
-        cap = cv2.VideoCapture(self.camera_id)
+        # Explicitly specify CAP_DSHOW backend for Windows stability
+        cap = cv2.VideoCapture(self.camera_id, cv2.CAP_DSHOW)
         if not cap.isOpened():
             self.error_occurred.emit(f"Camera {self.camera_id} open error")
             return
@@ -967,7 +1060,8 @@ class MultiCameraMonitorThread(QThread):
     def _try_reopen(self, cid):
         if cid in self.caps:
             self.caps[cid].release()
-        cap = cv2.VideoCapture(cid)
+        # Explicitly specify CAP_DSHOW backend for reconnection
+        cap = cv2.VideoCapture(cid, cv2.CAP_DSHOW)
         if cap.isOpened():
             self.caps[cid] = cap
             self.active[cid] = True
@@ -1261,7 +1355,7 @@ class MonitoringWidget(QWidget):
         # Auto-save monitoring snapshots related properties
         self.is_auto_saving = False
         self.camera_recorders = {}  # {camera_id: VideoRecorder}
-        self.monitor_history_dir = Path("monitor_history")
+        self.monitor_history_dir = get_runtime_dir("monitor_history")
         self.monitor_history_dir.mkdir(exist_ok=True)
         self.current_memory_usage = 0  # MB
         self.max_memory_limit = 500  # MB
@@ -2200,7 +2294,8 @@ class CameraThread(QThread):
     def run(self):
         """主线程逻辑"""
         try:
-            self.cap = cv2.VideoCapture(self.camera_id)
+            # Explicitly specify CAP_DSHOW backend for Windows stability
+            self.cap = cv2.VideoCapture(self.camera_id, cv2.CAP_DSHOW)
             if not self.cap.isOpened():
                 self.frame_ready.emit(self.camera_id, None, f"Error: Camera not found {self.camera_id}", -1)
                 return
@@ -2885,10 +2980,10 @@ class SnapshotWidget(QWidget):
         super().__init__(parent)
         self.snapshots = []  # 存储快照记录
         self.current_snapshot_index = 0
-        self.monitor_history_dir = Path("monitor_history")
+        self.monitor_history_dir = get_runtime_dir("monitor_history")
         self.monitor_history_dir.mkdir(exist_ok=True)
         # 添加detection_history目录支持
-        self.detection_history_dir = Path("detection_history")
+        self.detection_history_dir = get_runtime_dir("detection_history")
         self.detection_history_dir.mkdir(exist_ok=True)
 
         self.init_ui()
@@ -3339,8 +3434,8 @@ class SnapshotWidget(QWidget):
         snapshot = self.snapshots[self.current_snapshot_index]
 
         try:
-            # 使用OpenCV读取MP4文件
-            cap = cv2.VideoCapture(snapshot['mp4_path'])
+            # Use CAP_FFMPEG for video files (more compatible)
+            cap = cv2.VideoCapture(snapshot['mp4_path'], cv2.CAP_FFMPEG)
             if not cap.isOpened():
                 QMessageBox.warning(self, "Error", "Failed to open video file")
                 return
@@ -3559,7 +3654,7 @@ class EnhancedDetectionUI(QMainWindow):
         # Snapshot related properties
         self.is_auto_saving = False
         self.video_recorder = None
-        self.history_dir = Path("detection_history")
+        self.history_dir = get_runtime_dir("detection_history")
         self.history_dir.mkdir(exist_ok=True)
 
         # Managers
@@ -3567,7 +3662,10 @@ class EnhancedDetectionUI(QMainWindow):
         self.model_manager = ModelManager()
         self.log_text = QTextEdit()
         self.init_ui()
-        self.setWindowIcon(self.create_enhanced_icon())
+        # Set window icon from logo.ico file (compatible with PyInstaller)
+        icon_path = get_resource_path("img/logo.ico")
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         # Apply style
         self.setStyleSheet(StyleManager.get_main_stylesheet())
@@ -4305,6 +4403,7 @@ class EnhancedDetectionUI(QMainWindow):
         """Start NIfTI detection"""
         self.log_message("🧠 Starting NIfTI file detection")
         # Get currently selected file
+        self.tab_widget.setCurrentIndex(1)
         current_file = self.current_source_path
         if not current_file:
             self.log_message("❌ Error: No NIfTI file selected")
@@ -4331,6 +4430,7 @@ class EnhancedDetectionUI(QMainWindow):
         thread = threading.Thread(target=self._process_niigz_file, args=(current_file,))
         thread.daemon = True
         thread.start()
+
 
     def _process_niigz_file(self, file_path):
         """Process NIfTI file"""
@@ -4655,9 +4755,10 @@ class EnhancedDetectionUI(QMainWindow):
 
         # Control buttons
         button_layout = QHBoxLayout()
+        button_layout.addStretch()  # Push buttons to the right
+        
         self.convert_btn = QPushButton("🔄 Convert")
         self.convert_btn.clicked.connect(self.convert_nifti)
-        self.convert_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
         button_layout.addWidget(self.convert_btn)
 
         self.preview_btn = QPushButton("👀 Preview")
@@ -4957,7 +5058,13 @@ class EnhancedDetectionUI(QMainWindow):
         self.original_label = QLabel("Waiting for source...")
         self.original_label.setAlignment(Qt.AlignCenter)
         self.original_label.setMinimumSize(500, 400)
-        self.original_label.setStyleSheet(StyleManager.get_image_label_style())
+        self.original_label.setStyleSheet("""
+            background: black;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+            padding: 15px;
+        """)
         original_layout.addWidget(self.original_label)
 
         # Result image display
@@ -4971,7 +5078,13 @@ class EnhancedDetectionUI(QMainWindow):
         self.result_label = QLabel("Waiting for detection result...")
         self.result_label.setAlignment(Qt.AlignCenter)
         self.result_label.setMinimumSize(500, 400)
-        self.result_label.setStyleSheet(StyleManager.get_image_label_style())
+        self.result_label.setStyleSheet("""
+            background: black;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+            padding: 15px;
+        """)
         result_layout.addWidget(self.result_label)
 
         layout.addWidget(original_container)
@@ -4991,6 +5104,13 @@ class EnhancedDetectionUI(QMainWindow):
         self.export_report_btn.setMaximumWidth(120)
         self.export_report_btn.clicked.connect(self.export_report)
         button_layout.addWidget(self.export_report_btn)
+        
+        # Clear button
+        self.clear_btn = QPushButton("🗑️ Clear")
+        self.clear_btn.setMaximumWidth(100)
+        self.clear_btn.clicked.connect(self.clear_display_windows)
+        button_layout.addWidget(self.clear_btn)
+        
         layout_top.addWidget(button_container)
         return widget
 
@@ -5282,15 +5402,27 @@ class EnhancedDetectionUI(QMainWindow):
         # Image Display
         image_layout = QHBoxLayout()
 
-        self.batch_original_label = QLabel("📷 Batch Detection: Original Image")
+        self.batch_original_label = QLabel("Batch Detection: Original Image")
         self.batch_original_label.setAlignment(Qt.AlignCenter)
         self.batch_original_label.setMinimumSize(500, 400)
-        self.batch_original_label.setStyleSheet(StyleManager.get_image_label_style())
+        self.batch_original_label.setStyleSheet("""
+            background: black;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+            padding: 15px;
+        """)
 
-        self.batch_result_label = QLabel("🎯 Batch Detection: Result Image")
+        self.batch_result_label = QLabel("Batch Detection: Result Image")
         self.batch_result_label.setAlignment(Qt.AlignCenter)
         self.batch_result_label.setMinimumSize(500, 400)
-        self.batch_result_label.setStyleSheet(StyleManager.get_image_label_style())
+        self.batch_result_label.setStyleSheet("""
+            background: black;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+            padding: 15px;
+        """)
 
         image_layout.addWidget(self.batch_original_label)
         image_layout.addWidget(self.batch_result_label)
@@ -5572,7 +5704,7 @@ class EnhancedDetectionUI(QMainWindow):
         self.batch_detection_thread.finished.connect(self.on_batch_finished)
 
         self.update_detection_ui_state(True)
-        self.tab_widget.setCurrentIndex(1)  # Switch to batch results
+        self.tab_widget.setCurrentIndex(2)
 
         self.batch_detection_thread.start()
         self.log_message("🚀 Starting batch detection...")
@@ -6112,6 +6244,15 @@ class EnhancedDetectionUI(QMainWindow):
         self.original_label.setText("Waiting for source...")
         self.result_label.clear()
         self.result_label.setText("Waiting for detection result...")
+        
+        # Clear Detection Result Details
+        if hasattr(self, 'result_detail_widget'):
+            # Clear the result table
+            if hasattr(self.result_detail_widget, 'result_table'):
+                self.result_detail_widget.result_table.setRowCount(0)
+            # Clear the statistics label
+            if hasattr(self.result_detail_widget, 'stats_label'):
+                self.result_detail_widget.stats_label.setText("Detection summary...")
 
     def display_image(self, img_array, label):
         """Display image"""
@@ -6149,51 +6290,7 @@ class EnhancedDetectionUI(QMainWindow):
         self.log_text.clear()
         self.log_message("🗑️ Log cleared")
 
-    def create_enhanced_icon(self, size=64):
-        """Create enhanced application icon"""
-        icon = QIcon()
 
-        for s in [16, 32, 48, 64, 128, 256]:
-            pixmap = QPixmap(s, s)
-            pixmap.fill(Qt.transparent)
-
-            painter = QPainter(pixmap)
-            painter.setRenderHint(QPainter.Antialiasing)
-
-            # Gradient background
-            gradient = QRadialGradient(s / 2, s / 2, s / 2)
-            gradient.setColorAt(0, QColor("#3498db"))
-            gradient.setColorAt(1, QColor("#2c3e50"))
-
-            painter.setBrush(QBrush(gradient))
-            painter.setPen(Qt.NoPen)
-            painter.drawEllipse(0, 0, s, s)
-
-            # Crosshair
-            painter.setPen(QPen(QColor("white"), max(1, s // 32), Qt.SolidLine))
-            center = s / 2
-            arm_len = s * 0.25
-
-            painter.drawLine(center - arm_len, center, center + arm_len, center)
-            painter.drawLine(center, center - arm_len, center, center + arm_len)
-
-            # Center dot
-            painter.setBrush(QBrush(QColor("white")))
-            r = max(2, s // 16)
-            painter.drawEllipse(center - r, center - r, 2 * r, 2 * r)
-
-            # AI eye effect
-            painter.setPen(QPen(QColor("#e74c3c"), max(1, s // 64), Qt.SolidLine))
-            painter.setBrush(Qt.NoBrush)
-
-            # Outer circle
-            outer_r = s * 0.35
-            painter.drawEllipse(center - outer_r, center - outer_r, 2 * outer_r, 2 * outer_r)
-
-            painter.end()
-            icon.addPixmap(pixmap)
-
-        return icon
 
 
 class DetectionVideoRecorder:
@@ -6333,7 +6430,7 @@ def main():
     # Set application information
     app.setApplicationName("YOLO-based Brain Tumor Detection System")
     app.setApplicationVersion("2.0")
-    app.setOrganizationName("AI Vision Lab")
+    app.setOrganizationName("[Neuroengineering Lab, UESTC](https://www.neuro.uestc.edu.cn/)")
 
     # Set high DPI scaling
     # app.setAttribute(Qt.AA_EnableHighDpiScaling)
