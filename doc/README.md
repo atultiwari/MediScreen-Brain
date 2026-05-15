@@ -3,7 +3,7 @@
 
 MediScreen-Brain is a lightweight brain tumor detection system designed for both clinical and research applications. It integrates YOLO object detection models with CPU-specific inference optimization, providing a user-friendly graphical interface (GUI) for non-experts to perform image analysis and generate reports efficiently.
 
-![Screenshot 1](img/1.png)  
+![Screenshot 1](../assets/img/1.png)  
 
 
 ## software download(Not ready yet)
@@ -30,4 +30,4 @@ For questions or collaboration opportunities, please contact:
 
 ## License
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License**. See the [LICENSE](../LICENSE) file for details.

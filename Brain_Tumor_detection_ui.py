@@ -3663,7 +3663,7 @@ class EnhancedDetectionUI(QMainWindow):
         self.log_text = QTextEdit()
         self.init_ui()
         # Set window icon from logo.ico file (compatible with PyInstaller)
-        icon_path = get_resource_path("img/logo.ico")
+        icon_path = get_resource_path("assets/img/logo.ico")
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
 
@@ -4451,8 +4451,10 @@ class EnhancedDetectionUI(QMainWindow):
 
         # Create TumorSliceFinder instance
         output_dir = os.path.join(os.path.dirname(file_path), "niigz_results")
+        # 使用 get_resource_path 兼容打包环境
+        model_path_resolved = str(get_resource_path('pt_models/best.pt'))
         finder = TumorSliceFinder(
-            model_path='pt_models/best.pt',
+            model_path=model_path_resolved,
             nii_path=file_path,
             output_project=output_dir,
             conf=0.65
@@ -4526,8 +4528,8 @@ class EnhancedDetectionUI(QMainWindow):
         # Ensure image data is contiguous in memory
         slice_rgb = np.ascontiguousarray(slice_rgb)
         # Model prediction
-        private_path = base_dir / "pt_models" / "Brain_Tumor.pt"
-        private_model = YOLO(private_path)
+        private_path = get_resource_path("pt_models/Brain_Tumor.pt")
+        private_model = YOLO(str(private_path))
         predictions = private_model.predict(source=slice_rgb, conf=self.conf_slider.value() / 100, verbose=False,show_conf=False)
         for pred in predictions:
             if pred.boxes:
