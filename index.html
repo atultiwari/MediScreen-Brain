@@ -268,6 +268,12 @@
       color: var(--muted); font-size: 0.9rem;
     }
     footer a { color: var(--accent); }
+    .footer-links {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-left: auto;
+    }
     @media (max-width: 960px) {
       .topbar { grid-template-columns: auto 1fr auto auto; gap: 12px 18px; padding: 12px 20px; }
       nav { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; gap: 14px; }
@@ -466,14 +472,20 @@
   <footer>
     <div lang="en">© 2026 MediScreen-Brain · For research & education only</div>
     <div lang="zh">© 2026 MediScreen-Brain · 仅供医学研究与教学使用</div>
-    <div>
+    <div class="footer-links">
       <a href="doc/PROJECT_DOCUMENTATION_ZN.md" download lang="zh">中文文档</a>
       <a href="doc/PROJECT_DOCUMENTATION_EN.md" download lang="en">English Docs</a>
        · 
       <a href="https://github.com/JingW-ui/MediScreen-Brain/issues" lang="en">Support</a>
       <a href="https://github.com/JingW-ui/MediScreen-Brain/issues" lang="zh">技术支持</a>
     </div>
+    <div style="opacity: 0.8; font-size: 0.75rem; margin-top: 8px;">
+      <span class="busuanzi_value_page_pv"></span>
+    </div>
   </footer>
+
+  <!-- 访问统计 -->
+  <script src="https://cdn.jsdelivr.net/gh/bytedance/openapi@latest/busuanzi.js"></script>
 
   <script>
     const langBtn = document.getElementById('langBtn');
