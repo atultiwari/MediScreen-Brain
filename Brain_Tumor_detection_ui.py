@@ -34,40 +34,62 @@ def get_resource_path(relative_path):
 
 
 def get_runtime_dir(relative_path):
-    """获取运行时目录的绝对路径（用于创建历史记录等运行时数据）
-    
-    注意：与 get_resource_path 不同，运行时目录应该在可执行文件所在目录创建，
-    而不是在打包的临时目录中。
+    """Absolute path for runtime data (history, snapshots).
+
+    When frozen by PyInstaller, anchor at the executable's directory so reports
+    persist next to the app. In dev mode, anchor at the project root.
     """
     if getattr(sys, 'frozen', False):
-        # 打包后的环境：在可执行文件所在目录创建
         base_path = Path(sys.executable).parent
     else:
-        # 开发环境：在项目根目录创建
         base_path = Path(__file__).parent
     return base_path / relative_path
 
 
-def get_runtime_dir(relative_path):
-    """获取运行时目录的绝对路径（用于创建历史记录等运行时数据）"""
-    if getattr(sys, 'frozen', False):
-        # 打包后的环境：在可执行文件所在目录创建
-        base_path = Path(sys.executable).parent
+def get_report_font_path():
+    """Return a TTF/TTC path with broad CJK coverage for the current OS.
+
+    Returns the first existing font in a platform-specific candidate list, or
+    None if none are found (caller should fall back to a built-in PDF font).
+    """
+    if sys.platform.startswith('win'):
+        candidates = [
+            r"C:\Windows\Fonts\msyh.ttc",
+            r"C:\Windows\Fonts\simhei.ttf",
+            r"C:\Windows\Fonts\simsun.ttc",
+        ]
+    elif sys.platform.startswith('darwin'):
+        candidates = [
+            "/System/Library/Fonts/STHeiti Light.ttc",
+            "/System/Library/Fonts/STHeiti Medium.ttc",
+            "/System/Library/Fonts/Supplemental/Songti.ttc",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/Library/Fonts/Arial Unicode.ttf",
+        ]
     else:
-        # 开发环境：在项目根目录创建
-        base_path = Path(__file__).parent
-    return base_path / relative_path
+        candidates = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/arphic/uming.ttc",
+        ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
 
 
-def get_runtime_dir(relative_path):
-    """获取运行时目录的绝对路径（用于创建历史记录等运行时数据）"""
-    if getattr(sys, 'frozen', False):
-        # 打包后的环境：在可执行文件所在目录创建
-        base_path = Path(sys.executable).parent
-    else:
-        # 开发环境：在项目根目录创建
-        base_path = Path(__file__).parent
-    return base_path / relative_path
+def get_camera_backend():
+    """Return the platform-appropriate OpenCV VideoCapture backend.
+
+    Forcing CAP_DSHOW (DirectShow) on macOS/Linux prevents cameras from
+    opening; use AVFoundation on macOS, V4L2 on Linux, DirectShow on Windows.
+    """
+    import cv2 as _cv2
+    if sys.platform.startswith('win'):
+        return _cv2.CAP_DSHOW
+    if sys.platform.startswith('darwin'):
+        return _cv2.CAP_AVFOUNDATION
+    return _cv2.CAP_V4L2
 
 class StyleManager:
     """Style Manager - Provides gradient and modern UI styles"""
@@ -442,8 +464,8 @@ class CameraManager:
             
             for i in range(MAX_CAMERAS):
                 try:
-                    # Explicitly specify CAP_DSHOW backend for Windows stability
-                    cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+                    # Platform-appropriate backend (DSHOW on Win, AVFoundation on macOS, V4L2 on Linux)
+                    cap = cv2.VideoCapture(i, get_camera_backend())
                     
                     if not cap.isOpened():
                         cap.release()
@@ -767,8 +789,8 @@ class DetectionThread(QThread):
 
     def _process_camera(self):
         """处理摄像头"""
-        # Explicitly specify CAP_DSHOW backend for Windows stability
-        cap = cv2.VideoCapture(self.camera_id, cv2.CAP_DSHOW)
+        # Platform-appropriate backend
+        cap = cv2.VideoCapture(self.camera_id, get_camera_backend())
         if not cap.isOpened():
             self.error_occurred.emit(f"Camera {self.camera_id} open error")
             return
@@ -999,7 +1021,7 @@ class MultiCameraMonitorThread(QThread):
     # ----------------- Private tools -----------------
     def _open_all(self):
         for cid in self.cam_ids:
-            cap = cv2.VideoCapture(cid, cv2.CAP_DSHOW)
+            cap = cv2.VideoCapture(cid, get_camera_backend())
             if cap.isOpened():
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -1060,8 +1082,8 @@ class MultiCameraMonitorThread(QThread):
     def _try_reopen(self, cid):
         if cid in self.caps:
             self.caps[cid].release()
-        # Explicitly specify CAP_DSHOW backend for reconnection
-        cap = cv2.VideoCapture(cid, cv2.CAP_DSHOW)
+        # Platform-appropriate backend for reconnection
+        cap = cv2.VideoCapture(cid, get_camera_backend())
         if cap.isOpened():
             self.caps[cid] = cap
             self.active[cid] = True
@@ -2294,8 +2316,8 @@ class CameraThread(QThread):
     def run(self):
         """主线程逻辑"""
         try:
-            # Explicitly specify CAP_DSHOW backend for Windows stability
-            self.cap = cv2.VideoCapture(self.camera_id, cv2.CAP_DSHOW)
+            # Platform-appropriate backend
+            self.cap = cv2.VideoCapture(self.camera_id, get_camera_backend())
             if not self.cap.isOpened():
                 self.frame_ready.emit(self.camera_id, None, f"Error: Camera not found {self.camera_id}", -1)
                 return
@@ -4082,13 +4104,16 @@ class EnhancedDetectionUI(QMainWindow):
             import tempfile
             import os
 
-            # Register font
-            font_path = "C:\Windows\Fonts\msyh.ttc"  # Font file path
-            if os.path.exists(font_path):
-                pdfmetrics.registerFont(TTFont('CustomFont', font_path))
-                font_name = 'CustomFont'
+            # Register font (cross-platform CJK lookup)
+            font_path = get_report_font_path()
+            if font_path:
+                try:
+                    pdfmetrics.registerFont(TTFont('CustomFont', font_path))
+                    font_name = 'CustomFont'
+                except Exception:
+                    font_name = 'Helvetica'
             else:
-                font_name = 'simhei'  # Alternative font
+                font_name = 'Helvetica'  # Safe built-in fallback
 
             # Create document
             doc = SimpleDocTemplate(file_path, pagesize=A4)
@@ -5142,13 +5167,16 @@ class EnhancedDetectionUI(QMainWindow):
             from reportlab.pdfbase import pdfmetrics
             from reportlab.pdfbase.ttfonts import TTFont
 
-            # Register font
-            font_path = "C:\Windows\Fonts\msyh.ttc"  # Font file path
-            if os.path.exists(font_path):
-                pdfmetrics.registerFont(TTFont('CustomFont', font_path))
-                font_name = 'CustomFont'
+            # Register font (cross-platform CJK lookup)
+            font_path = get_report_font_path()
+            if font_path:
+                try:
+                    pdfmetrics.registerFont(TTFont('CustomFont', font_path))
+                    font_name = 'CustomFont'
+                except Exception:
+                    font_name = 'Helvetica'
             else:
-                font_name = 'simhei'  # Alternative font
+                font_name = 'Helvetica'  # Safe built-in fallback
 
             # Create document
             doc = SimpleDocTemplate(file_path, pagesize=A4)

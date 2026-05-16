@@ -1,0 +1,40 @@
+# MediScreen-Brain — slim macOS / Apple Silicon runtime dependencies.
+#
+# This file replaces the Windows/conda-locked requirements.txt for macOS use.
+# The original file contains file:// paths and unused heavy deps
+# (chattts, whisper, gfpgan, realesrgan, gradio, selenium, tensorboard, ...).
+#
+# Python: 3.10 or 3.11 recommended.
+
+# --- GUI ---------------------------------------------------------------------
+PySide6>=6.6,<6.8
+
+# --- Vision / ML -------------------------------------------------------------
+# No +cu121 suffix on macOS — CUDA is Windows/Linux only. Wheel resolves to
+# arm64 CPU+MPS build automatically on Apple Silicon.
+torch>=2.2,<2.6
+torchvision>=0.17,<0.21
+ultralytics==8.3.168
+onnxruntime>=1.17,<1.20
+opencv-python==4.11.0.86
+
+# --- Medical imaging I/O -----------------------------------------------------
+nibabel==5.2.1
+
+# --- Numerics / data ---------------------------------------------------------
+numpy<2
+scipy
+pandas
+matplotlib
+Pillow
+scikit-image
+scikit-learn
+
+# --- Reporting ---------------------------------------------------------------
+reportlab>=4.0,<4.4
+openpyxl==3.1.5
+
+# --- Optional 3D viewers (used by NIfTI tab) ---------------------------------
+pyqtgraph
+vtk>=9.3
+pyvista>=0.44
